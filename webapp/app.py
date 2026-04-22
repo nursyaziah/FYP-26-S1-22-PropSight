@@ -1116,6 +1116,7 @@ def _normalize_town_name(value):
 @dataclass
 class Review:
     """Public review payload schema and serializer."""
+    user_id: int
     name: str
     role: str
     rating: int
@@ -1124,6 +1125,7 @@ class Review:
 
     def to_insert_payload(self):
         return {
+            "user_id": self.user_id,
             "name": self.name,
             "role": self.role,
             "rating": self.rating,
@@ -3796,8 +3798,9 @@ def landing():
 
 
 @app.route("/review")
+@login_required
 def review_page():
-    """Public review submission page."""
+    """Review submission page (login required)."""
     return render_template("review.html")
 
 
@@ -4742,9 +4745,108 @@ def api_public_recent_ticker():
         return jsonify([])
 
 
+@app.route("/api/reviews/mine", methods=["GET"])
+@api_login_required
+def api_get_my_review():
+    """Return the logged-in user's review row, or null."""
+    user_id = _session_user_id()
+    try:
+        rows = (
+            _supabase_request(
+                SUPABASE_REVIEWS_TABLE,
+                filters={
+                    "user_id": f"eq.{user_id}",
+                    "select": "id,name,role,rating,content,created_at,is_approved",
+                    "limit": "1",
+                },
+            )
+            or []
+        )
+    except SupabaseError as exc:
+        return jsonify({"error": "Unable to load review", "details": str(exc)}), 500
+    row = rows[0] if rows else None
+    return jsonify({"review": row})
+
+
+def _normalize_review_account_tier(raw_tier):
+    """Map users.subscription_tier to landing-page account_tier."""
+    t = str(raw_tier or "").strip().lower()
+    if t == "premium":
+        return "premium"
+    return "general"
+
+
+def _tiers_by_user_ids(user_ids):
+    """Fetch subscription_tier for integer user ids (small sets)."""
+    ids = []
+    for x in user_ids:
+        try:
+            ids.append(int(x))
+        except (TypeError, ValueError):
+            continue
+    ids = list(dict.fromkeys(ids))
+    if not ids:
+        return {}
+    out = {}
+    if len(ids) == 1:
+        rows = (
+            _supabase_request(
+                SUPABASE_USERS_TABLE,
+                filters={
+                    "id": f"eq.{ids[0]}",
+                    "select": "id,subscription_tier",
+                    "limit": "1",
+                },
+            )
+            or []
+        )
+        if rows:
+            out[ids[0]] = rows[0].get("subscription_tier")
+        return out
+    in_list = ",".join(str(i) for i in ids)
+    rows = (
+        _supabase_request(
+            SUPABASE_USERS_TABLE,
+            filters={
+                "id": f"in.({in_list})",
+                "select": "id,subscription_tier",
+                "limit": "500",
+            },
+        )
+        or []
+    )
+    for r in rows:
+        try:
+            uid = int(r.get("id"))
+        except (TypeError, ValueError):
+            continue
+        out[uid] = r.get("subscription_tier")
+    return out
+
+
+@app.route("/api/reviews/mine", methods=["DELETE"])
+@api_login_required
+def api_delete_my_review():
+    """Delete the logged-in user's review (if any)."""
+    user_id = _session_user_id()
+    actor_email = str(session.get("email") or "").strip().lower()
+    try:
+        _supabase_request(
+            SUPABASE_REVIEWS_TABLE,
+            method="DELETE",
+            filters={"user_id": f"eq.{user_id}"},
+        )
+    except SupabaseError as exc:
+        return jsonify({"error": "Unable to delete review", "details": str(exc)}), 500
+    _log_admin_event("review_user_delete", user_id, actor_email)
+    return jsonify({"ok": True})
+
+
 @app.route("/api/reviews", methods=["POST"])
+@api_login_required
 def api_create_review():
-    """Create a user review from public landing/review page."""
+    """Create or replace the logged-in user's review."""
+    user_id = _session_user_id()
     payload = request.get_json(silent=True) or {}
     name = str(payload.get("name") or "").strip()
     role = str(payload.get("role") or "").strip()
@@ -4768,6 +4870,7 @@ def api_create_review():
         return jsonify({"error": "content must be between 20 and 1200 characters"}), 400
 
     review = Review(
+        user_id=user_id,
         name=name,
         role=role,
         rating=rating,
@@ -4778,6 +4881,11 @@ def api_create_review():
     try:
         _supabase_request(
             SUPABASE_REVIEWS_TABLE,
+            method="DELETE",
+            filters={"user_id": f"eq.{user_id}"},
+        )
+        _supabase_request(
+            SUPABASE_REVIEWS_TABLE,
             method="POST",
             payload=review.to_insert_payload(),
             prefer="return=representation",
@@ -4785,6 +4893,11 @@ def api_create_review():
     except SupabaseError as exc:
         return jsonify({"error": "Unable to save review right now", "details": str(exc)}), 500
 
+    _log_admin_event(
+        "review_submit",
+        user_id,
+        str(session.get("email") or "").strip().lower(),
+    )
     return jsonify({"ok": True, "message": "Review submitted successfully."}), 201
 
 
@@ -4804,7 +4917,7 @@ def api_public_reviews():
             rows = _supabase_request(
                 SUPABASE_REVIEWS_TABLE,
                 filters={
-                    "select": "id,name,role,rating,content,created_at",
+                    "select": "id,user_id,name,role,rating,content,created_at",
                     "is_approved": "eq.true",
                     "rating": "gte.4",
                     "order": "created_at.desc",
@@ -4816,17 +4929,33 @@ def api_public_reviews():
         random.shuffle(rows)
         rows = rows[:requested_limit]
 
-    return jsonify([
-        {
+    # Enrich with account tier when missing (older RPC shape).
+    tier_lookup_ids = []
+    for row in rows:
+        st = row.get("subscription_tier")
+        if (st is None or str(st).strip() == "") and row.get("user_id") is not None:
+            tier_lookup_ids.append(row.get("user_id"))
+    tier_map = _tiers_by_user_ids(tier_lookup_ids) if tier_lookup_ids else {}
+    out = []
+    for row in rows:
+        raw_tier = row.get("subscription_tier")
+        if (raw_tier is None or str(raw_tier).strip() == "") and row.get("user_id") is not None:
+            try:
+                uid = int(row.get("user_id"))
+                raw_tier = tier_map.get(uid)
+            except (TypeError, ValueError):
+                raw_tier = None
+        account_tier = _normalize_review_account_tier(raw_tier)
+        out.append({
             "id": row.get("id"),
             "name": row.get("name"),
             "role": row.get("role"),
             "rating": row.get("rating"),
             "content": row.get("content"),
             "created_at": row.get("created_at"),
-        }
-        for row in rows
-    ])
+            "account_tier": account_tier,
+        })
+    return jsonify(out)
 
 
 # ---------------------------------------------------------------------------
@@ -5866,8 +5995,12 @@ def _set_user_suspend_state(user_id, suspended):
     raise last_exc or RuntimeError("Could not update suspension state.")
 
 
-def _log_admin_event(action, target_user_id=None, target_email=""):
-    """Write an admin activity event for notification feed."""
+def _log_admin_event(action, target_user_id=None, target_email="", actor_email=None):
+    """Write an admin activity event for notification feed.
+
+    *target_email* identifies the primary account (e.g. review author).
+    *actor_email* when set is appended as |actor:... for moderator attribution.
+    """
     try:
         uid = int(target_user_id) if target_user_id is not None else None
     except Exception:
@@ -5876,6 +6009,9 @@ def _log_admin_event(action, target_user_id=None, target_email=""):
         return
     detail = str(target_email or "").strip().lower()
     feature = f"admin:{action}:{detail}" if detail else f"admin:{action}"
+    actor = str(actor_email or "").strip().lower()
+    if actor:
+        feature = f"{feature}|actor:{actor}"
     try:
         _supabase_request(
             "feature_view_log",
@@ -5913,7 +6049,7 @@ def api_admin_notifications():
         except Exception:
             pass
 
-        # Subscription changes: last 5 admin events from feature_view_log
+        # Admin + review activity: last rows from feature_view_log
         try:
             admin_rows = _supabase_request(
                 "feature_view_log",
@@ -5921,7 +6057,7 @@ def api_admin_notifications():
                     "select": "feature,created_at",
                     "feature": "like.admin:%",
                     "order": "created_at.desc",
-                    "limit": "5",
+                    "limit": "20",
                 },
             ) or []
             action_map = {
@@ -5930,20 +6066,42 @@ def api_admin_notifications():
                 "reinstate": "Account reinstated",
                 "upgrade": "User upgraded to Premium",
                 "downgrade": "User downgraded to Registered",
+                "review_submit": "Review submitted or updated",
+                "review_user_delete": "Member removed their own review",
+                "review_delete": "Admin deleted a review",
+                "review_hide": "Admin hid a review from the landing page",
+                "review_show": "Admin restored a review to the landing page",
             }
             for r in admin_rows:
                 feature = str(r.get("feature") or "")
                 parts = feature.split(":", 2)
                 action = parts[1] if len(parts) >= 2 else "event"
-                target = parts[2] if len(parts) >= 3 else ""
+                tail = parts[2] if len(parts) >= 3 else ""
+                actor = ""
+                if "|actor:" in tail:
+                    target, _, actor_rest = tail.partition("|actor:")
+                    target = target.strip().lower()
+                    actor = actor_rest.strip().lower()
+                else:
+                    target = str(tail).strip().lower()
                 text = action_map.get(action, "Admin activity")
                 if target:
                     text = f"{text}: {target}"
+                if actor:
+                    text = f"{text} — by {actor}"
+                icon_color = "blue"
+                if action.startswith("review_"):
+                    if action in ("review_submit", "review_show"):
+                        icon_color = "green"
+                    elif action == "review_delete":
+                        icon_color = "red"
+                    else:
+                        icon_color = "orange"
                 events.append({
-                    "type": "subscription_change",
+                    "type": "review" if action.startswith("review_") else "subscription_change",
                     "text": text,
                     "timestamp": r.get("created_at"),
-                    "icon_color": "blue",
+                    "icon_color": icon_color,
                 })
         except Exception:
             pass
@@ -5975,7 +6133,7 @@ def api_admin_notifications():
             pass
 
         events.sort(key=lambda e: str(e.get("timestamp") or ""), reverse=True)
-        return jsonify(events[:10])
+        return jsonify(events[:15])
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 
@@ -6132,6 +6290,178 @@ def api_admin_users():
             })
         return jsonify(result)
     except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/admin/reviews")
+@api_admin_required
+def api_admin_reviews():
+    """All user reviews with account email for moderation."""
+    try:
+        rows = (
+            _supabase_request(
+                SUPABASE_REVIEWS_TABLE,
+                filters={
+                    "select": "id,user_id,name,role,rating,content,is_approved,created_at",
+                    "order": "created_at.desc",
+                    "limit": "500",
+                },
+            )
+            or []
+        )
+        users = (
+            _supabase_request(
+                SUPABASE_USERS_TABLE,
+                filters={"select": "id,username,email", "limit": "10000"},
+            )
+            or []
+        )
+        by_uid = {}
+        for u in users:
+            try:
+                uid = int(u.get("id"))
+            except (TypeError, ValueError):
+                continue
+            by_uid[uid] = u
+        out = []
+        for r in rows:
+            try:
+                uid = int(r.get("user_id"))
+            except (TypeError, ValueError):
+                uid = None
+            u = by_uid.get(uid) if uid is not None else None
+            out.append(
+                {
+                    "id": r.get("id"),
+                    "user_id": uid,
+                    "user_username": (u or {}).get("username") or "",
+                    "user_email": (u or {}).get("email") or "",
+                    "name": r.get("name"),
+                    "role": r.get("role"),
+                    "rating": r.get("rating"),
+                    "content": r.get("content"),
+                    "is_approved": bool(r.get("is_approved")),
+                    "created_at": r.get("created_at"),
+                }
+            )
+        return jsonify(out)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/admin/reviews/<int:review_id>", methods=["PATCH"])
+@api_admin_required
+def api_admin_patch_review(review_id):
+    """Set is_approved (hide or restore on landing page)."""
+    payload = request.get_json(silent=True) or {}
+    if "is_approved" not in payload:
+        return jsonify({"error": "is_approved required"}), 400
+    approved = bool(payload.get("is_approved"))
+    try:
+        existing = (
+            _supabase_request(
+                SUPABASE_REVIEWS_TABLE,
+                filters={
+                    "id": f"eq.{int(review_id)}",
+                    "select": "user_id",
+                    "limit": "1",
+                },
+            )
+            or []
+        )
+        if not existing:
+            return jsonify({"error": "Review not found"}), 404
+        try:
+            author_id = int(existing[0].get("user_id"))
+        except (TypeError, ValueError):
+            author_id = None
+        author_email = ""
+        if author_id is not None:
+            urows = (
+                _supabase_request(
+                    SUPABASE_USERS_TABLE,
+                    filters={
+                        "id": f"eq.{author_id}",
+                        "select": "email",
+                        "limit": "1",
+                    },
+                )
+                or []
+            )
+            if urows:
+                author_email = str(urows[0].get("email") or "")
+        _supabase_request(
+            SUPABASE_REVIEWS_TABLE,
+            method="PATCH",
+            filters={"id": f"eq.{int(review_id)}"},
+            payload={"is_approved": approved},
+            prefer="return=minimal",
+        )
+        if author_id is not None:
+            act = "review_show" if approved else "review_hide"
+            _log_admin_event(
+                act,
+                author_id,
+                author_email,
+                actor_email=str(session.get("email") or "").strip(),
+            )
+        return jsonify({"ok": True, "is_approved": approved})
+    except SupabaseError as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/admin/reviews/<int:review_id>", methods=["DELETE"])
+@api_admin_required
+def api_admin_delete_review(review_id):
+    """Permanently remove a review."""
+    try:
+        existing = (
+            _supabase_request(
+                SUPABASE_REVIEWS_TABLE,
+                filters={
+                    "id": f"eq.{int(review_id)}",
+                    "select": "user_id",
+                    "limit": "1",
+                },
+            )
+            or []
+        )
+        if not existing:
+            return jsonify({"error": "Review not found"}), 404
+        row = existing[0]
+        try:
+            author_id = int(row.get("user_id"))
+        except (TypeError, ValueError):
+            author_id = None
+        email = ""
+        if author_id is not None:
+            urows = (
+                _supabase_request(
+                    SUPABASE_USERS_TABLE,
+                    filters={
+                        "id": f"eq.{author_id}",
+                        "select": "email",
+                        "limit": "1",
+                    },
+                )
+                or []
+            )
+            if urows:
+                email = str(urows[0].get("email") or "")
+        _supabase_request(
+            SUPABASE_REVIEWS_TABLE,
+            method="DELETE",
+            filters={"id": f"eq.{int(review_id)}"},
+        )
+        if author_id is not None:
+            _log_admin_event(
+                "review_delete",
+                author_id,
+                email,
+                actor_email=str(session.get("email") or "").strip(),
+            )
+        return jsonify({"ok": True})
+    except SupabaseError as exc:
         return jsonify({"error": str(exc)}), 500
 
 

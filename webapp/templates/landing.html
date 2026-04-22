@@ -873,6 +873,63 @@
             z-index: 1;
         }
 
+        .testimonial-card .user-profile {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .testimonial-card .user-avatar {
+            width: 52px;
+            height: 52px;
+            min-width: 52px;
+            border-radius: 50%;
+            font-size: 1.05rem;
+            flex-shrink: 0;
+        }
+
+        .testimonial-card .user-name {
+            margin: 0;
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: var(--dark);
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px 10px;
+        }
+
+        .review-tier {
+            display: inline-flex;
+            align-items: center;
+            font-size: 0.68rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            padding: 5px 11px;
+            border-radius: 999px;
+            line-height: 1;
+        }
+
+        .review-tier-general {
+            background: rgba(37, 99, 235, 0.14);
+            color: #1d4ed8;
+            border: 1px solid rgba(37, 99, 235, 0.22);
+        }
+
+        .review-tier-premium {
+            background: rgba(16, 185, 129, 0.18);
+            color: #047857;
+            border: 1px solid rgba(16, 185, 129, 0.28);
+        }
+
+        .testimonial-card .user-role {
+            font-size: 0.9rem;
+            color: var(--gray);
+        }
+
         .slider-controls {
             display: flex;
             justify-content: center;
@@ -2285,6 +2342,7 @@
                 <p class="hero-subtitle mx-auto">Hear how PropSight is helping buyers, sellers, and agents make
                     data-driven decisions.</p>
                 <a href="/review" class="btn btn-outline-custom rounded-pill mt-3"><i class="bi bi-pencil-square"></i> Share Your Experience</a>
+                <p class="text-secondary small mt-2 mb-0">Sign in required. You can remove your review anytime.</p>
             </div>
 
             <div class="testimonial-container">
@@ -2658,7 +2716,7 @@
             if (!slider) return;
             slider.innerHTML = '';
             if (!Array.isArray(reviews) || !reviews.length) {
-                slider.innerHTML = '<div class="testimonial-card"><div class="quote-icon">"</div><div class="stars">★★★★★</div><p class="testimonial-text">"Be the first to share your PropSight story."</p><div class="user-profile"><div class="user-avatar d-flex align-items-center justify-content-center bg-dark text-white fw-bold">PS</div><div><h5 class="user-name">PropSight User</h5><span class="user-role">Community</span></div></div></div>';
+                slider.innerHTML = '<div class="testimonial-card"><div class="quote-icon">"</div><div class="stars">★★★★★</div><p class="testimonial-text">"Be the first to share your PropSight story."</p><div class="user-profile"><div class="user-avatar d-flex align-items-center justify-content-center rounded-circle bg-dark text-white fw-bold">PS</div><div><h5 class="user-name">PropSight User <span class="review-tier review-tier-general">General user</span></h5><span class="user-role">Community</span></div></div></div>';
                 return;
             }
 
@@ -2668,7 +2726,9 @@
                 const name = escapeHtml(review.name || 'Anonymous');
                 const role = escapeHtml(review.role || 'User');
                 const content = escapeHtml(review.content || '');
-                const initials = escapeHtml(buildInitialAvatar(name));
+                const initials = escapeHtml(buildInitialAvatar(review.name || 'Anonymous'));
+                const accountTier = (review.account_tier === 'premium') ? 'premium' : 'general';
+                const tierLabel = accountTier === 'premium' ? 'Premium user' : 'General user';
 
                 const card = document.createElement('div');
                 card.className = 'testimonial-card';
@@ -2676,8 +2736,8 @@
                     + '<div class="stars">' + stars + '</div>'
                     + '<p class="testimonial-text">"' + content + '"</p>'
                     + '<div class="user-profile">'
-                    + '<div class="user-avatar d-flex align-items-center justify-content-center bg-dark text-white fw-bold">' + initials + '</div>'
-                    + '<div><h5 class="user-name">' + name + '</h5><span class="user-role">' + role + '</span></div>'
+                    + '<div class="user-avatar d-flex align-items-center justify-content-center rounded-circle bg-dark text-white fw-bold">' + initials + '</div>'
+                    + '<div><h5 class="user-name">' + name + ' <span class="review-tier review-tier-' + accountTier + '">' + tierLabel + '</span></h5><span class="user-role">' + role + '</span></div>'
                     + '</div>';
                 slider.appendChild(card);
             });

@@ -165,6 +165,7 @@
     <symbol id="ic-gear" viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a7.05 7.05 0 0 0-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.74 8.87a.47.47 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.47.47 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.47.47 0 0 0-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></symbol>
     <symbol id="ic-check" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></symbol>
     <symbol id="ic-x" viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></symbol>
+    <symbol id="ic-quote" viewBox="0 0 24 24"><path d="M6 17h3l2-4V7H5v6h3zm8 0h3l2-4V7h-6v6h3z"/></symbol>
   </svg>
 
   <div class="aurora-1"></div>
@@ -185,6 +186,7 @@
         <button class="sidebar-link" onclick="showSection('accounts',this)"><span class="ico"><svg viewBox="0 0 24 24"><use href="#ic-people"></use></svg></span> Manage Accounts <span class="badge-count" id="suspended-count" title="Suspended accounts">0</span></button>
         <button class="sidebar-link" onclick="showSection('create-account',this)"><span class="ico"><svg viewBox="0 0 24 24"><use href="#ic-person-add"></use></svg></span> Create Account</button>
         <button class="sidebar-link" onclick="showSection('subscriptions',this)"><span class="ico"><svg viewBox="0 0 24 24"><use href="#ic-trophy"></use></svg></span> Subscription Revenue</button>
+        <button class="sidebar-link" onclick="showSection('reviews',this)"><span class="ico"><svg viewBox="0 0 24 24"><use href="#ic-quote"></use></svg></span> User Reviews</button>
 </nav>
       <div class="sidebar-footer">
         <div class="sidebar-user">
@@ -371,12 +373,59 @@
             </div>
           </div>
         </div>
+
+        <div class="dash-section" id="section-reviews">
+          <div class="info-banner"><span class="ico"><svg viewBox="0 0 24 24"><use href="#ic-quote"></use></svg></span><span><strong>Moderation:</strong> Search review text and member emails. Hiding a review removes it from the landing page but keeps the row; delete removes it permanently.</span></div>
+          <div class="content-card">
+            <div class="card-header-custom">
+              <div>
+                <div class="card-title-custom">User Reviews</div>
+                <div class="card-sub-custom">Submitted from the review page; data loads live from Supabase.</div>
+              </div>
+              <button type="button" class="btn-primary-sm" onclick="loadAdminReviews(false)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+                Refresh
+              </button>
+            </div>
+            <div class="card-body-custom">
+              <div class="filter-bar">
+                <div class="search-input-wrap"><span class="ico"><svg viewBox="0 0 24 24"><use href="#ic-search"></use></svg></span><input type="text" class="search-input" id="review-search" placeholder="Filter by email, name, role, or review words…" oninput="renderAdminReviews()"></div>
+                <select class="filter-select" id="review-filter-status" onchange="renderAdminReviews()" style="max-width:200px">
+                  <option value="all">All statuses</option>
+                  <option value="live">Live on landing</option>
+                  <option value="hidden">Hidden</option>
+                </select>
+              </div>
+              <div style="overflow-x:auto">
+                <table class="admin-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Account</th>
+                      <th>Display name</th>
+                      <th>Role</th>
+                      <th>Rating</th>
+                      <th>Excerpt</th>
+                      <th>Status</th>
+                      <th>Submitted</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="admin-reviews-tbody">
+                    <tr><td colspan="9" style="color:var(--gray);">Open this tab to load reviews.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
 </div>
     </main>
   </div>
 
   <div class="modal-overlay" id="suspend-modal"><div class="modal-box"><div style="font-size:1.3rem;font-weight:800;color:var(--primary);margin-bottom:8px;">Suspend Account</div><div style="font-size:.88rem;color:var(--gray);margin-bottom:28px;">This user will lose platform access immediately.</div><p style="font-size:.9rem;color:var(--primary);font-weight:600;margin-bottom:24px;">User: <span id="suspend-user-name" style="color:var(--danger);"></span></p><div style="display:flex;gap:12px;justify-content:flex-end;"><button class="btn-cancel" onclick="closeModal('suspend-modal')">Cancel</button><button class="btn-primary-sm" style="background:var(--danger);" onclick="confirmSuspend()">Suspend</button></div></div></div>
   <div class="modal-overlay" id="reinstate-modal"><div class="modal-box"><div style="font-size:1.3rem;font-weight:800;color:var(--primary);margin-bottom:8px;">Reinstate Account</div><div style="font-size:.88rem;color:var(--gray);margin-bottom:28px;">Restore full platform access to the user.</div><p style="font-size:.9rem;color:var(--primary);font-weight:600;margin-bottom:24px;">User: <span id="reinstate-user-name" style="color:var(--accent);"></span></p><div style="display:flex;gap:12px;justify-content:flex-end;"><button class="btn-cancel" onclick="closeModal('reinstate-modal')">Cancel</button><button class="btn-primary-sm" onclick="confirmReinstate()">Reinstate</button></div></div></div>
+  <div class="modal-overlay" id="review-text-modal" onclick="if(event.target===this)closeModal('review-text-modal')"><div class="modal-box" style="max-width:640px;"><div style="font-size:1.15rem;font-weight:800;margin-bottom:12px;">Full review text</div><pre id="review-text-modal-body" style="white-space:pre-wrap;word-break:break-word;font-size:.88rem;color:var(--primary);max-height:52vh;overflow:auto;margin:0 0 20px;background:rgba(15,23,42,.04);padding:16px;border-radius:10px;font-family:inherit;"></pre><div style="display:flex;justify-content:flex-end;"><button class="btn-primary-sm" onclick="closeModal('review-text-modal')">Close</button></div></div></div>
 
   <script>
     let accounts = [];
@@ -403,6 +452,9 @@
     let currentPredRange = 'hour';
     let notificationsLoading = false;
     let lastStatsData = null;
+    let adminReviews = [];
+    let adminReviewsLoading = false;
+    let lastAdminReviewsSig = '';
 
     // --- Helpers ---
     function getRoleBadge(role){ const map={'Registered User':'role-registered','Premium User':'role-premium','Admin':'role-admin'}; return `<span class="role-badge ${map[role]||'role-registered'}">${role}</span>`; }
@@ -410,7 +462,7 @@
     function showLoading(id){ const el=document.getElementById(id); if(el) el.innerHTML='<tr><td colspan="10" class="text-center p-4 text-muted">Loading...</td></tr>'; }
 
     async function fetchJson(url, options = {}){
-      const res = await fetch(url, options);
+      const res = await fetch(url, { credentials: 'same-origin', ...options });
       const data = await res.json().catch(()=>({}));
       if(!res.ok){
         const msg = data?.error || `Request failed (${res.status})`;
@@ -433,6 +485,7 @@
       accounts:{title:'Manage Accounts', sub:'Search, filter and control platform user accounts with live status.'},
       'create-account':{title:'Create Account', sub:'Create a user profile on behalf of a customer.'},
       subscriptions:{title:'Subscription Revenue', sub:'Track premium plans, monthly income and plan changes.'},
+      reviews:{title:'User Reviews', sub:'Moderate landing-page testimonials: read full text, hide, or delete.'},
     };
     // --- Fetch stats from Supabase via Flask ---
     async function loadStats(){
@@ -598,6 +651,115 @@
         </td></tr>`).join('');
     }
     function filterAccounts(){ renderAccounts(); }
+
+    function escapeHtml(s){
+      const d = document.createElement('div');
+      d.textContent = s == null ? '' : String(s);
+      return d.innerHTML;
+    }
+
+    async function loadAdminReviews(silent=false){
+      if(adminReviewsLoading) return;
+      adminReviewsLoading = true;
+      const tbody = document.getElementById('admin-reviews-tbody');
+      if(tbody && !silent) tbody.innerHTML = '<tr><td colspan="9" class="text-center p-4" style="color:var(--gray)">Loading...</td></tr>';
+      try{
+        const rows = await fetchJson('/api/admin/reviews');
+        const next = Array.isArray(rows) ? rows : [];
+        const sig = JSON.stringify(next);
+        if(sig !== lastAdminReviewsSig || !silent){
+          adminReviews = next;
+          lastAdminReviewsSig = sig;
+          renderAdminReviews();
+        }
+      } catch(e){
+        adminReviews = [];
+        lastAdminReviewsSig = '';
+        renderAdminReviews();
+        if(!silent) showToast(e.message || 'Failed to load reviews.','error');
+      } finally {
+        adminReviewsLoading = false;
+      }
+    }
+
+    function renderAdminReviews(){
+      const tbody = document.getElementById('admin-reviews-tbody');
+      if(!tbody) return;
+      const q = (document.getElementById('review-search')?.value || '').toLowerCase().trim();
+      const st = document.getElementById('review-filter-status')?.value || 'all';
+      const filtered = adminReviews.filter(r=>{
+        if(st === 'live' && !r.is_approved) return false;
+        if(st === 'hidden' && r.is_approved) return false;
+        if(!q) return true;
+        const hay = [r.user_email, r.user_username, r.name, r.role, r.content].map(x => String(x || '').toLowerCase()).join(' ');
+        return hay.includes(q);
+      });
+      if(!filtered.length){
+        tbody.innerHTML = '<tr><td colspan="9" style="color:var(--gray);text-align:center;padding:2rem;">No reviews match.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = filtered.map(r=>{
+        const id = r.id;
+        const raw = String(r.content || '');
+        const excerpt = raw.slice(0, 90) + (raw.length > 90 ? '…' : '');
+        const rating = Math.min(5, Math.max(1, Number(r.rating) || 1));
+        const stars = '★'.repeat(rating);
+        const statusBadge = r.is_approved
+          ? '<span class="status-badge badge-active">Live</span>'
+          : '<span class="status-badge badge-suspended">Hidden</span>';
+        const toggleLabel = r.is_approved ? 'Hide' : 'Show';
+        return `<tr>
+          <td style="font-weight:700;">${id}</td>
+          <td style="font-size:.82rem;"><div style="font-weight:600;">${escapeHtml(r.user_email || '—')}</div><div style="color:var(--gray);font-size:.75rem;">${escapeHtml(r.user_username || '')}</div></td>
+          <td>${escapeHtml(r.name || '—')}</td>
+          <td>${escapeHtml(r.role || '—')}</td>
+          <td title="${stars}"><span style="color:#f59e0b;font-size:.9rem;">${stars}</span></td>
+          <td style="max-width:220px;font-size:.82rem;color:var(--gray);">${escapeHtml(excerpt) || '—'}</td>
+          <td>${statusBadge}</td>
+          <td style="font-size:.82rem;color:var(--gray);">${formatDate(r.created_at)}</td>
+          <td style="display:flex;flex-wrap:wrap;gap:6px;">
+            <button type="button" class="btn-action" onclick="openReviewTextModal(${id})">Full text</button>
+            <button type="button" class="btn-action" onclick="toggleReviewApproved(${id}, ${!!r.is_approved})">${toggleLabel}</button>
+            <button type="button" class="btn-action danger" onclick="deleteAdminReview(${id})">Delete</button>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+
+    function openReviewTextModal(reviewId){
+      const r = adminReviews.find(x => String(x.id) === String(reviewId));
+      const body = document.getElementById('review-text-modal-body');
+      if(body) body.textContent = r ? (r.content || '') : '';
+      document.getElementById('review-text-modal')?.classList.add('open');
+    }
+
+    async function toggleReviewApproved(reviewId, currentlyApproved){
+      const next = !currentlyApproved;
+      try{
+        await fetchJson('/api/admin/reviews/' + reviewId, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_approved: next }),
+        });
+        showToast(next ? 'Review is live on the landing page.' : 'Review hidden from landing page.', 'success');
+        await loadAdminReviews(false);
+      } catch(e){
+        showToast(e.message || 'Update failed.', 'error');
+      }
+    }
+
+    async function deleteAdminReview(reviewId){
+      if(!window.confirm('Permanently delete this review? The user can submit a new one later.')) return;
+      try{
+        const res = await fetch('/api/admin/reviews/' + reviewId, { method: 'DELETE', credentials: 'same-origin' });
+        const data = await res.json().catch(() => ({}));
+        if(!res.ok) throw new Error(data.error || 'Delete failed');
+        showToast('Review deleted.', 'success');
+        await loadAdminReviews(false);
+      } catch(e){
+        showToast(e.message || 'Delete failed.', 'error');
+      }
+    }
 
     function renderSubTable(){
       const tbody = document.getElementById('sub-tbody');
@@ -898,6 +1060,7 @@
       if(id==='accounts') loadAccounts();
       if(id==='subscriptions'){ loadAccounts(false); loadStats(); loadSubscriptionPlanConfig(); }
       if(id==='overview') loadOverviewData();
+      if(id==='reviews') loadAdminReviews(false);
       requestAnimationFrame(()=>requestAnimationFrame(()=>{
         initCharts();
         if(id==='overview') updateOverviewCharts();
@@ -930,6 +1093,9 @@
         }
         if(isSectionActive('model')){
           loadModelVersions();
+        }
+        if(isSectionActive('reviews')){
+          loadAdminReviews(true);
         }
       }, 5000);
     }

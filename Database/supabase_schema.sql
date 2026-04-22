@@ -136,9 +136,10 @@ ALTER TABLE IF EXISTS saved_predictions
 ALTER TABLE IF EXISTS saved_predictions
     ADD COLUMN IF NOT EXISTS block TEXT NOT NULL DEFAULT '';
 
--- Public reviews submitted from landing/review page
+-- Public reviews submitted from landing/review page (one row per logged-in user)
 CREATE TABLE IF NOT EXISTS reviews (
     id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name        TEXT NOT NULL CHECK (char_length(name) <= 80),
     role        TEXT NOT NULL CHECK (char_length(role) <= 80),
     rating      INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
@@ -149,6 +150,15 @@ CREATE TABLE IF NOT EXISTS reviews (
 
 CREATE INDEX IF NOT EXISTS idx_reviews_public_quality
     ON reviews (is_approved, rating, created_at DESC);
+
+-- Upgrade: reviews table created before user_id (drops anonymous rows without a user)
+ALTER TABLE reviews ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
+
+DELETE FROM reviews WHERE user_id IS NULL;
+
+ALTER TABLE reviews ALTER COLUMN user_id SET NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_reviews_one_per_user ON reviews (user_id);
 
 -- ── 5. Model Versions Table ───────────────────────────────────
 
@@ -731,27 +741,35 @@ LANGUAGE SQL STABLE AS $$
 $$;
 
 -- Public random high-quality reviews for landing page
+-- DROP required when OUT/RETURNS shape changes (CREATE OR REPLACE is not enough).
+DROP FUNCTION IF EXISTS rpc_public_reviews(integer, integer);
+
 CREATE OR REPLACE FUNCTION rpc_public_reviews(
     p_limit INTEGER DEFAULT 5,
     p_min_rating INTEGER DEFAULT 4
 )
 RETURNS TABLE(
     id BIGINT,
+    user_id INTEGER,
     name TEXT,
     role TEXT,
     rating INTEGER,
     content TEXT,
-    created_at TIMESTAMP WITH TIME ZONE
+    created_at TIMESTAMP WITH TIME ZONE,
+    subscription_tier TEXT
 )
 LANGUAGE SQL STABLE AS $$
     SELECT
         r.id,
+        r.user_id::INTEGER,
         r.name,
         r.role,
         r.rating,
         r.content,
-        r.created_at
+        r.created_at,
+        COALESCE(u.subscription_tier, 'general')::TEXT AS subscription_tier
     FROM reviews r
+    LEFT JOIN users u ON u.id = r.user_id
     WHERE r.is_approved = TRUE
       AND r.rating >= GREATEST(1, LEAST(p_min_rating, 5))
     ORDER BY random()

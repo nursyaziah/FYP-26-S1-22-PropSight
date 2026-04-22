@@ -58,6 +58,10 @@
         color: #fff;
         font-size: 1.8rem;
     }
+    .review-existing-banner {
+        border-radius: 16px;
+        background: rgba(248, 250, 252, 0.95);
+    }
 </style>
 {% endblock %}
 
@@ -70,13 +74,24 @@
                     <span class="badge rounded-pill text-bg-light border mb-3 px-3 py-2">Community Reviews</span>
                     <h1 class="fw-bold mb-2">Share Your PropSight Experience</h1>
                     <p class="text-secondary mb-0">Your feedback helps fellow Singaporeans make better property decisions.</p>
+                    <p class="text-secondary small mb-0 mt-2">Signed-in members only. You can delete your review anytime.</p>
+                </div>
+
+                <div id="review-existing-banner" class="alert review-existing-banner border d-none mb-4" role="status">
+                    <div>
+                        <span class="fw-semibold d-block">You already have a public review.</span>
+                        <span class="text-secondary small">Submitting the form again replaces it. Or remove it from the wall entirely.</span>
+                    </div>
+                    <button type="button" id="delete-review-btn" class="btn btn-outline-danger rounded-pill px-4 flex-shrink-0">
+                        Delete my review
+                    </button>
                 </div>
 
                 <form id="review-form" novalidate>
                     <div class="row g-3">
                         <div class="col-md-6">
                             <label for="name" class="form-label fw-semibold">Name</label>
-                            <input id="name" name="name" type="text" class="form-control form-control-lg" maxlength="80" required>
+                            <input id="name" name="name" type="text" class="form-control form-control-lg" maxlength="80" required value="{{ g.user.username|e if g.user and g.user.username else '' }}">
                         </div>
                         <div class="col-md-6">
                             <label for="role" class="form-label fw-semibold">Role</label>
@@ -100,7 +115,7 @@
                         </div>
                         <div class="col-12 d-grid mt-2">
                             <button type="submit" id="submit-btn" class="btn btn-primary-custom btn-lg rounded-pill">
-                                Submit Review
+                                <span id="submit-btn-label">Submit Review</span>
                             </button>
                         </div>
                         <div class="col-12">
@@ -131,8 +146,17 @@
         var ratingInput = document.getElementById('rating');
         var errorEl = document.getElementById('review-error');
         var submitBtn = document.getElementById('submit-btn');
+        var submitLabel = document.getElementById('submit-btn-label');
         var formWrap = document.getElementById('review-form-wrap');
         var successEl = document.getElementById('review-success');
+        var existingBanner = document.getElementById('review-existing-banner');
+        var deleteBtn = document.getElementById('delete-review-btn');
+
+        function fetchOpts(method, bodyObj) {
+            var o = { method: method, credentials: 'same-origin', headers: { 'Content-Type': 'application/json' } };
+            if (bodyObj !== undefined) o.body = JSON.stringify(bodyObj);
+            return o;
+        }
 
         function setRating(value) {
             var safeValue = Math.max(1, Math.min(5, Number(value) || 5));
@@ -142,12 +166,74 @@
             });
         }
 
+        function applyReviewToForm(review) {
+            if (!review) {
+                existingBanner.classList.add('d-none');
+                existingBanner.classList.remove('d-flex', 'flex-column', 'flex-sm-row', 'align-items-sm-center', 'justify-content-between', 'gap-3');
+                if (submitLabel) submitLabel.textContent = 'Submit Review';
+                return;
+            }
+            existingBanner.classList.remove('d-none');
+            existingBanner.classList.add('d-flex', 'flex-column', 'flex-sm-row', 'align-items-sm-center', 'justify-content-between', 'gap-3');
+            if (submitLabel) submitLabel.textContent = 'Update review';
+            document.getElementById('name').value = review.name || '';
+            document.getElementById('role').value = review.role || '';
+            document.getElementById('content').value = review.content || '';
+            setRating(review.rating);
+        }
+
+        function loadMyReview() {
+            fetch('/api/reviews/mine', fetchOpts('GET'))
+                .then(function (r) {
+                    if (r.status === 401) {
+                        window.location.href = '/login?next=' + encodeURIComponent('/review');
+                        return null;
+                    }
+                    return r.ok ? r.json() : r.json().then(function (d) { throw new Error((d && d.error) || 'Load failed'); });
+                })
+                .then(function (data) {
+                    if (!data) return;
+                    applyReviewToForm(data.review);
+                })
+                .catch(function () { /* keep empty form */ });
+        }
+
         starButtons.forEach(function (btn) {
             btn.addEventListener('click', function () {
                 setRating(btn.dataset.value);
             });
         });
         setRating(5);
+        loadMyReview();
+
+        deleteBtn.addEventListener('click', function () {
+            if (!window.confirm('Remove your review from the landing page? You can submit a new one later.')) return;
+            errorEl.classList.add('d-none');
+            deleteBtn.disabled = true;
+            fetch('/api/reviews/mine', fetchOpts('DELETE'))
+                .then(function (r) {
+                    if (r.status === 401) {
+                        window.location.href = '/login?next=' + encodeURIComponent('/review');
+                        return null;
+                    }
+                    if (!r.ok) return r.json().then(function (d) { throw new Error((d && d.error) || 'Delete failed'); });
+                    return r.json();
+                })
+                .then(function (ok) {
+                    if (!ok) return;
+                    document.getElementById('role').value = '';
+                    document.getElementById('content').value = '';
+                    setRating(5);
+                    applyReviewToForm(null);
+                })
+                .catch(function (err) {
+                    errorEl.textContent = err.message || 'Could not delete.';
+                    errorEl.classList.remove('d-none');
+                })
+                .then(function () {
+                    deleteBtn.disabled = false;
+                });
+        });
 
         form.addEventListener('submit', function (event) {
             event.preventDefault();
@@ -160,7 +246,11 @@
             }
 
             submitBtn.disabled = true;
-            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Submitting...';
+            if (submitLabel) {
+                submitLabel.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Saving...';
+            } else {
+                submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Saving...';
+            }
 
             var payload = {
                 name: document.getElementById('name').value.trim(),
@@ -169,12 +259,12 @@
                 content: document.getElementById('content').value.trim()
             };
 
-            fetch('/api/reviews', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            })
+            fetch('/api/reviews', fetchOpts('POST', payload))
                 .then(function (response) {
+                    if (response.status === 401) {
+                        window.location.href = '/login?next=' + encodeURIComponent('/review');
+                        return null;
+                    }
                     if (!response.ok) {
                         return response.json().then(function (data) {
                             var msg = (data && data.error) ? data.error : 'Unable to submit review right now.';
@@ -183,7 +273,8 @@
                     }
                     return response.json();
                 })
-                .then(function () {
+                .then(function (body) {
+                    if (!body) return;
                     formWrap.style.display = 'none';
                     successEl.classList.add('is-visible');
                 })
@@ -191,7 +282,11 @@
                     errorEl.textContent = error.message || 'Something went wrong. Please try again.';
                     errorEl.classList.remove('d-none');
                     submitBtn.disabled = false;
-                    submitBtn.textContent = 'Submit Review';
+                    if (submitLabel) {
+                        submitLabel.textContent = existingBanner.classList.contains('d-none') ? 'Submit Review' : 'Update review';
+                    } else {
+                        submitBtn.textContent = 'Submit Review';
+                    }
                 });
         });
     }());
