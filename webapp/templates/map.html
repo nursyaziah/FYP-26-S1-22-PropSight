@@ -857,6 +857,10 @@
 {% endblock %}
 
 {% block extra_scripts %}
+<script id="map-flat-models-data" type="application/json">{{ flat_models|tojson }}</script>
+<script id="map-flat-models-by-type-data" type="application/json">{{ flat_models_by_type|tojson }}</script>
+<script id="map-hawker-centres-data" type="application/json">{{ hawker_centres|tojson }}</script>
+<script id="map-high-demand-primary-schools-data" type="application/json">{{ high_demand_primary_schools|tojson }}</script>
 <script>
 // ─── Map Init ────────────────────────────────────────────────────
 const map = L.map('map', { zoomControl: true }).setView([1.3521, 103.8198], 12);
@@ -933,8 +937,18 @@ const mapLayout = document.querySelector('.map-layout');
 const sidebarToggleBtn = document.getElementById('sidebarToggleBtn');
 const sidebarToggleText = document.getElementById('sidebarToggleText');
 const sidebarToggleIcon = document.getElementById('sidebarToggleIcon');
-const allMapFlatModels = {{ flat_models|tojson }};
-const mapFlatModelsByType = {{ flat_models_by_type|tojson }};
+function parseEmbeddedJson(id, fallback) {
+    const element = document.getElementById(id);
+    if (!element) return fallback;
+    try {
+        return JSON.parse(element.textContent || 'null');
+    } catch (error) {
+        console.error(`Failed to parse embedded JSON for ${id}`, error);
+        return fallback;
+    }
+}
+const allMapFlatModels = parseEmbeddedJson('map-flat-models-data', []);
+const mapFlatModelsByType = parseEmbeddedJson('map-flat-models-by-type-data', {});
 const shouldStartInPins = (
     initialModeParam === 'transactions' ||
     initialModeParam === 'pins' ||
@@ -1695,8 +1709,8 @@ const SHOPPING_MALLS = [
     {name:"AMK Hub",lat:1.3694,lng:103.8490},{name:"Yew Tee Point",lat:1.3975,lng:103.7480},
 ];
 
-const HAWKER_CENTRES = {{ hawker_centres|tojson }};
-const HIGH_DEMAND_PRIMARY_SCHOOLS = {{ high_demand_primary_schools|tojson }};
+const HAWKER_CENTRES = parseEmbeddedJson('map-hawker-centres-data', []);
+const HIGH_DEMAND_PRIMARY_SCHOOLS = parseEmbeddedJson('map-high-demand-primary-schools-data', []);
 
 // ─── Build Amenity Layers (distinct shapes) ──────────────────────
 function makeAmenityIcon(cls) {
