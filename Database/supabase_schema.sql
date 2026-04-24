@@ -217,19 +217,22 @@ RETURNS TABLE(
 $$;
 
 -- Recent transactions for map
+DROP FUNCTION IF EXISTS rpc_api_transactions(TEXT, INTEGER, INTEGER);
+DROP FUNCTION IF EXISTS rpc_api_transactions(TEXT, INTEGER);
+
 CREATE OR REPLACE FUNCTION rpc_api_transactions(
     p_town TEXT DEFAULT NULL,
     p_limit INTEGER DEFAULT 500,
     p_min_year INTEGER DEFAULT NULL
 )
 RETURNS TABLE(
-    town TEXT, flat_type TEXT, block TEXT, street_name TEXT,
+    town TEXT, flat_type TEXT, flat_model TEXT, block TEXT, street_name TEXT,
     storey_range TEXT, floor_area_sqm DOUBLE PRECISION,
     resale_price DOUBLE PRECISION, month TEXT, year INTEGER,
     latitude DOUBLE PRECISION, longitude DOUBLE PRECISION
 ) LANGUAGE SQL STABLE AS $$
     SELECT
-        t.name, ft.name, b.block, b.street_name,
+        t.name, ft.name, fm.name, b.block, b.street_name,
         tx.storey_range, tx.floor_area_sqm,
         tx.resale_price, tx.month, tx.year,
         b.latitude, b.longitude
@@ -237,6 +240,7 @@ RETURNS TABLE(
     JOIN blocks     b  ON tx.block_id     = b.id
     JOIN towns      t  ON b.town_id       = t.id
     JOIN flat_types ft ON tx.flat_type_id = ft.id
+    LEFT JOIN flat_models fm ON tx.flat_model_id = fm.id
     WHERE b.latitude IS NOT NULL AND b.longitude IS NOT NULL
       AND (p_town IS NULL OR t.name = p_town)
       AND (p_min_year IS NULL OR tx.year >= p_min_year)

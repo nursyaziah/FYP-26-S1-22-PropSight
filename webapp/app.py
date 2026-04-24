@@ -373,6 +373,11 @@ FLAT_TYPE_ORDINAL = {
     "1 Room": 1, "2 Room": 2, "3 Room": 3, "4 Room": 4,
     "5 Room": 5, "Executive": 6, "Multi-Generation": 7,
 }
+MAP_FLAT_TYPE_EXCLUSIONS = {"1 Room", "Executive", "Multi-Generation"}
+MAP_FLAT_TYPES = [
+    flat_type for flat_type in FLAT_TYPE_ORDINAL
+    if flat_type not in MAP_FLAT_TYPE_EXCLUSIONS
+]
 
 FLAT_MODELS_BY_TYPE = {
     "1 Room": ["Improved"],
@@ -434,29 +439,15 @@ HDB_DATASET_START_YEAR = 1990
 DEFAULT_FLOOR_AREA = 90
 MAP_TRANSACTION_START_YEAR = 2024
 MAP_TRANSACTION_LIMIT = 10000
+MAP_API_ACCESS_SESSION_KEY = "_map_api_access_until"
+MAP_API_ACCESS_SECONDS = 1800
 
 
-def _build_map_storey_range_options(storey_values):
-    floors = sorted(
-        int(value) for value in (storey_values or [])
-        if str(value).isdigit()
-    )
-    if not floors:
-        return []
-
-    grouped_ranges = []
-    for idx in range(0, len(floors), 3):
-        chunk = floors[idx:idx + 3]
-        if not chunk:
-            continue
-        if len(chunk) == 1:
-            grouped_ranges.append(f"{chunk[0]:02d}")
-        else:
-            grouped_ranges.append(f"{chunk[0]:02d} TO {chunk[-1]:02d}")
-    return grouped_ranges
-
-
-MAP_STOREY_RANGE_OPTIONS = _build_map_storey_range_options(STOREY_RANGES)
+MAP_STOREY_LEVEL_OPTIONS = [
+    {"value": "3", "label": "Low level"},
+    {"value": "8", "label": "Mid level"},
+    {"value": "15", "label": "High level"},
+]
 
 
 def _storey_midpoint(storey_range):
@@ -2507,6 +2498,44 @@ def _check_feature_limit(feature):
     return count < limit, count, limit
 
 
+def _grant_map_api_access():
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=MAP_API_ACCESS_SECONDS)
+    session[MAP_API_ACCESS_SESSION_KEY] = expires_at.isoformat().replace("+00:00", "Z")
+
+
+def _has_current_map_api_access():
+    raw_expires_at = session.get(MAP_API_ACCESS_SESSION_KEY)
+    if not raw_expires_at:
+        return False
+    try:
+        expires_at = datetime.fromisoformat(str(raw_expires_at).replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return datetime.now(timezone.utc) <= expires_at
+
+
+def _map_api_limit_response(limit):
+    return jsonify({
+        "error": f"You've used all {limit} free Map views this week. Upgrade to Premium for unlimited access.",
+    }), 403
+
+
+def _require_map_api_access():
+    """Ensure map JSON endpoints cannot be used after the weekly map view limit."""
+    if session.get("subscription_tier", "general") == "premium":
+        return None
+    if _has_current_map_api_access():
+        return None
+
+    allowed, _, limit = _check_feature_limit("map")
+    if not allowed:
+        return _map_api_limit_response(limit)
+
+    _log_feature_view_once(session["user_id"], "map")
+    _grant_map_api_access()
+    return None
+
+
 def _log_feature_view_once(user_id, feature):
     """Log a feature view, but ignore immediate reloads within a short grace window."""
     session_key = "_feature_view_times"
@@ -3540,14 +3569,29 @@ def _complete_prediction_form_data(form_data, infer_flat_type=False):
 def _resolve_forecast_flat_type(town, flat_type, street_name="", block=""):
     """Choose a flat type for analytics forecasts when the filter is broad."""
     flat_type = (flat_type or "").strip()
-    if flat_type:
-        return flat_type, []
-
     breakdown = _get_flat_type_breakdown_data(town, street_name, block)
     ranked = sorted(
         (row for row in breakdown if row.get("flat_type")),
         key=lambda row: (-int(row.get("txn_count") or 0), row.get("flat_type")),
     )
+
+    if flat_type:
+        matched_flat_type = next(
+            (
+                row["flat_type"] for row in ranked
+                if str(row.get("flat_type", "")).strip().upper() == flat_type.upper()
+            ),
+            None,
+        )
+        if matched_flat_type:
+            return matched_flat_type, []
+        if ranked:
+            resolved_flat_type = ranked[0]["flat_type"]
+            return resolved_flat_type, [
+                f"{flat_type} is not available in this scope; used representative flat type: {resolved_flat_type}"
+            ]
+        return flat_type, []
+
     if ranked:
         resolved_flat_type = ranked[0]["flat_type"]
         return resolved_flat_type, [f"Used representative flat type: {resolved_flat_type}"]
@@ -4510,14 +4554,15 @@ def map_view():
         flash(f"You've used all {limit} free Map views this week. Upgrade to Premium for unlimited access.", "warning")
         return redirect(url_for("pricing"))
     _log_feature_view_once(session["user_id"], "map")
+    _grant_map_api_access()
     return render_template(
         "map.html",
         towns=TOWNS,
-        flat_types=list(FLAT_TYPE_ORDINAL.keys()),
+        flat_types=MAP_FLAT_TYPES,
         flat_models=FLAT_MODELS,
         flat_models_by_type=FLAT_MODELS_BY_TYPE,
         storey_ranges=STOREY_RANGES,
-        map_storey_ranges=MAP_STOREY_RANGE_OPTIONS,
+        map_storey_levels=MAP_STOREY_LEVEL_OPTIONS,
         map_transaction_start_year=MAP_TRANSACTION_START_YEAR,
         hawker_centres=_load_reference_points("hawker_centres.json"),
         high_demand_primary_schools=_load_reference_points("high_demand_primary_schools.json"),
@@ -4587,6 +4632,10 @@ def analytics():
 @api_login_required
 def api_transactions():
     """Return recent transactions with lat/lng for map pins."""
+    access_error = _require_map_api_access()
+    if access_error:
+        return access_error
+
     town = request.args.get("town", "")
     limit = max(1, min(_coerce_int(request.args.get("limit", 500), 500), MAP_TRANSACTION_LIMIT))
     min_year = _coerce_int(request.args.get("min_year"))
@@ -4623,6 +4672,10 @@ def api_transactions():
 @api_login_required
 def api_district_summary():
     """Return per-town summary stats for district heatmap."""
+    access_error = _require_map_api_access()
+    if access_error:
+        return access_error
+
     return jsonify(_get_prediction_map_seed_data())
 
 
@@ -4630,16 +4683,22 @@ def api_district_summary():
 @api_login_required
 def api_predicted_heatmap():
     """Return model-based town estimates using inputs inferred from each town."""
+    access_error = _require_map_api_access()
+    if access_error:
+        return access_error
+
     district_data = _get_prediction_map_seed_data()
     if not district_data:
         return jsonify({"error": "Town map data is currently unavailable."}), 503
 
+    # Keep map-wide comparison intentionally high-level. Detailed floor area,
+    # lease, street, and block analysis belongs in Predict/Analytics.
+    requested_flat_type = request.args.get("flat_type", "").strip()
+    scenario_flat_type = requested_flat_type if requested_flat_type in MAP_FLAT_TYPES else ""
     scenario_input = {
-        "flat_type": request.args.get("flat_type", "").strip(),
-        "flat_model": request.args.get("flat_model", "").strip(),
-        "floor_area": request.args.get("floor_area", "").strip(),
-        "storey_range": request.args.get("storey_range", "").strip(),
-        "lease_commence": request.args.get("lease_commence", "").strip(),
+        "flat_type": scenario_flat_type,
+        "flat_model": request.args.get("flat_model", "").strip() if scenario_flat_type else "",
+        "storey_range": request.args.get("storey_range", "").strip() if scenario_flat_type else "",
     }
     use_scenario = any(scenario_input.values())
 
@@ -4667,6 +4726,8 @@ def api_predicted_heatmap():
         recent_avg = _safe_metric(d.get("recent_avg"))
         historical_avg = _safe_metric(d.get("avg_price"))
 
+        estimate_source = "model"
+        estimate_warning = ""
         try:
             pred = predict_price(
                 town,
@@ -4677,6 +4738,7 @@ def api_predicted_heatmap():
                 profile["lease_commence"],
             )
         except Exception:
+            app.logger.warning("Map prediction failed for %s; using historical fallback.", town, exc_info=True)
             fallback_estimate = next(
                 (
                     value for value in (latest_avg, recent_avg, historical_avg)
@@ -4687,6 +4749,8 @@ def api_predicted_heatmap():
             pred = {
                 "predicted_price": round(fallback_estimate),
             }
+            estimate_source = "historical_fallback"
+            estimate_warning = "Prediction model unavailable; showing historical market fallback."
 
         comparison_values = [
             value for value in (latest_avg, recent_avg, historical_avg)
@@ -4707,6 +4771,8 @@ def api_predicted_heatmap():
             "total_txns": _coerce_int(d.get("total_txns"), 0) or 0,
             "market_low": round(market_low),
             "market_high": round(market_high),
+            "estimate_source": estimate_source,
+            "estimate_warning": estimate_warning,
             "flat_type": profile["flat_type"],
             "flat_model": profile["flat_model"],
             "storey_range": profile["storey_range"],

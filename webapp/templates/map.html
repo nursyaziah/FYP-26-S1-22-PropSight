@@ -671,7 +671,7 @@
                         <span class="map-stat-value" id="statTowns">-</span>
                     </div>
                     <div class="map-stat">
-                        <span class="map-stat-label" id="statAvgLabel">Model Estimate</span>
+                        <span class="map-stat-label" id="statAvgLabel">Town Estimate</span>
                         <span class="map-stat-value" id="statAvgPrice">-</span>
                     </div>
                     <div class="map-stat">
@@ -710,7 +710,7 @@
                             </div>
                         </div>
                         <div class="scenario-body" id="scenarioBody">
-                            <p class="scenario-copy">Optional: compare towns using the same flat type, model, and floor range. Towns without an exact match still adapt automatically so the map stays usable.</p>
+                            <p class="scenario-copy">Optional: compare towns using the same common flat type, model, and floor level. Towns without an exact match still adapt automatically so the map stays usable.</p>
                             <div class="scenario-grid">
                                 <div class="map-control-group">
                                     <label for="mapFlatType">Flat Type</label>
@@ -731,11 +731,11 @@
                                     </select>
                                 </div>
                                 <div class="map-control-group">
-                                    <label for="mapStoreyRange">Floor Range</label>
+                                    <label for="mapStoreyRange">Floor Level</label>
                                     <select id="mapStoreyRange" class="form-select form-select-sm map-select">
                                         <option value="">Town-inferred</option>
-                                        {% for sr in map_storey_ranges %}
-                                        <option value="{{ sr }}">{{ sr }}</option>
+                                        {% for level in map_storey_levels %}
+                                        <option value="{{ level.value }}">{{ level.label }}</option>
                                         {% endfor %}
                                     </select>
                                 </div>
@@ -810,7 +810,7 @@
                     </div>
 
                     <div class="map-insight" id="mapInsight">
-                        Prediction view compares model-generated town estimates inferred from each town's own market data. Open Map Parameters if you want to compare a shared scenario across towns.
+                        Prediction view compares town estimates inferred from each town's own market data. Open Map Parameters if you want to compare a shared scenario across towns.
                     </div>
                     <div class="map-period-note" id="mapPeriodNote">
                         <span class="period-label">Map Note</span>
@@ -838,11 +838,11 @@
             <!-- Loading spinner -->
             <div class="map-loading" id="mapLoading">
                 <span class="spinner-border spinner-border-sm"></span>
-                <span id="loadingText">Running town model...</span>
+                <span id="loadingText">Running town estimates...</span>
             </div>
 
             <div class="map-legend-panel" id="legendPanel">
-                <div class="map-legend-title" id="legendTitle">Model Estimate</div>
+                <div class="map-legend-title" id="legendTitle">Town Estimate</div>
                 <div class="legend-scale legend-scale-price" id="legendScale"></div>
                 <div class="legend-labels" id="legendLabels">
                     <span id="legendLow">Low</span>
@@ -857,8 +857,8 @@
 {% endblock %}
 
 {% block extra_scripts %}
-<script id="map-flat-models-data" type="application/json">{{ flat_models|tojson }}</script>
 <script id="map-flat-models-by-type-data" type="application/json">{{ flat_models_by_type|tojson }}</script>
+<script id="map-storey-levels-data" type="application/json">{{ map_storey_levels|tojson }}</script>
 <script id="map-hawker-centres-data" type="application/json">{{ hawker_centres|tojson }}</script>
 <script id="map-high-demand-primary-schools-data" type="application/json">{{ high_demand_primary_schools|tojson }}</script>
 <script>
@@ -947,8 +947,8 @@ function parseEmbeddedJson(id, fallback) {
         return fallback;
     }
 }
-const allMapFlatModels = parseEmbeddedJson('map-flat-models-data', []);
 const mapFlatModelsByType = parseEmbeddedJson('map-flat-models-by-type-data', {});
+const mapStoreyLevels = parseEmbeddedJson('map-storey-levels-data', []);
 const shouldStartInPins = (
     initialModeParam === 'transactions' ||
     initialModeParam === 'pins' ||
@@ -967,7 +967,7 @@ map.getPane('amenityPane').style.pointerEvents = 'auto';
 
 const PIN_COLORS = ['#22c55e','#84cc16','#facc15','#fb923c','#f97316','#ef4444','#be123c'];
 
-// ─── Choropleth color (blue → white → red) ──────────────────────
+// ─── Town heatmap color (blue -> white -> red) ──────────────────
 function lerpColor(a, b, t) {
     const ar = parseInt(a.slice(1,3),16), ag = parseInt(a.slice(3,5),16), ab = parseInt(a.slice(5,7),16);
     const br = parseInt(b.slice(1,3),16), bg = parseInt(b.slice(3,5),16), bb = parseInt(b.slice(5,7),16);
@@ -977,7 +977,7 @@ function lerpColor(a, b, t) {
     return '#' + [r,g,bl].map(c => c.toString(16).padStart(2,'0')).join('');
 }
 
-function choroplethColor(value, min, max) {
+function townHeatmapColor(value, min, max) {
     if (!Number.isFinite(value) || min >= max) return '#f1f5f9';
     const t = Math.max(0, Math.min(1, (value - min) / (max - min)));
     if (t <= 0.5) return lerpColor('#1d4ed8', '#f1f5f9', t / 0.5);
@@ -993,10 +993,11 @@ function updateStats(data, mode) {
     let avgPrice = '-';
     if (mode === 'heatmap') {
         const prices = data.map(d => Number(d.predicted_price)).filter(Number.isFinite);
+        const hasFallback = data.some(d => d.estimate_source === 'historical_fallback');
         avgPrice = prices.length
             ? '$' + Math.round(prices.reduce((s, v) => s + v, 0) / prices.length).toLocaleString()
             : '-';
-        avgLabel.textContent = 'Model Estimate';
+        avgLabel.textContent = hasFallback ? 'Mixed Estimates' : 'Town Estimate';
     } else {
         const prices = data.map(d => Number(d.resale_price)).filter(Number.isFinite);
         avgPrice = prices.length
@@ -1041,6 +1042,18 @@ function handleAuthFailure(resp) {
     return false;
 }
 
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, function(ch) {
+        return {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        }[ch];
+    });
+}
+
 function equalsIgnoreCase(left, right) {
     return String(left || '').trim().toUpperCase() === String(right || '').trim().toUpperCase();
 }
@@ -1080,13 +1093,13 @@ function getTransactionPeriodLabel(data) {
         : `${years[0]} to ${years[years.length - 1]}`;
 }
 
-function updateLegend(mode, minVal, maxVal) {
+function updateLegend(mode, minVal, maxVal, hasFallback = false) {
     const title = document.getElementById('legendTitle');
     const scale = document.getElementById('legendScale');
     const labels = document.getElementById('legendLabels');
 
     if (mode === 'heatmap') {
-        title.textContent = 'Model Estimate';
+        title.textContent = hasFallback ? 'Estimate / Fallback' : 'Town Estimate';
         scale.className = 'legend-scale legend-scale-price';
         const lo = Number.isFinite(minVal) ? '$' + Math.round(minVal).toLocaleString() : 'Low';
         const hi = Number.isFinite(maxVal) ? '$' + Math.round(maxVal).toLocaleString() : 'High';
@@ -1122,9 +1135,19 @@ function updateAmenityLegend() {
 
 function renderMapSelectOptions(selectEl, values, preferredValue, defaultLabel) {
     const normalizedValues = Array.isArray(values)
-        ? values.map(function(value) { return String(value); })
+        ? values.map(function(value) {
+            if (value && typeof value === 'object') {
+                return {
+                    value: String(value.value || ''),
+                    label: String(value.label || value.value || ''),
+                };
+            }
+            return { value: String(value), label: String(value) };
+        })
         : [];
-    const selectedValue = normalizedValues.includes(String(preferredValue || ''))
+    const selectedValue = normalizedValues.some(function(option) {
+        return option.value === String(preferredValue || '');
+    })
         ? String(preferredValue || '')
         : '';
 
@@ -1136,11 +1159,12 @@ function renderMapSelectOptions(selectEl, values, preferredValue, defaultLabel) 
     defaultOption.selected = selectedValue === '';
     selectEl.appendChild(defaultOption);
 
-    normalizedValues.forEach(function(value) {
+    normalizedValues.forEach(function(optionData) {
+        if (!optionData.value) return;
         const option = document.createElement('option');
-        option.value = value;
-        option.textContent = value;
-        option.selected = value === selectedValue;
+        option.value = optionData.value;
+        option.textContent = optionData.label;
+        option.selected = optionData.value === selectedValue;
         selectEl.appendChild(option);
     });
 }
@@ -1148,10 +1172,32 @@ function renderMapSelectOptions(selectEl, values, preferredValue, defaultLabel) 
 function syncMapFlatModelOptions() {
     const flatType = (mapFlatTypeSelect.value || '').trim();
     const currentValue = (mapFlatModelSelect.value || '').trim();
-    const nextOptions = flatType
-        ? (mapFlatModelsByType[flatType] || [])
-        : allMapFlatModels;
-    renderMapSelectOptions(mapFlatModelSelect, nextOptions, currentValue, 'Town-inferred');
+    mapFlatModelSelect.disabled = !flatType;
+    renderMapSelectOptions(
+        mapFlatModelSelect,
+        flatType ? (mapFlatModelsByType[flatType] || []) : [],
+        currentValue,
+        flatType ? 'Town-inferred' : 'Select flat type first'
+    );
+}
+
+function syncMapStoreyLevelOptions() {
+    const flatType = (mapFlatTypeSelect.value || '').trim();
+    const currentValue = (mapStoreyRangeSelect.value || '').trim();
+    mapStoreyRangeSelect.disabled = !flatType;
+    renderMapSelectOptions(
+        mapStoreyRangeSelect,
+        flatType ? mapStoreyLevels : [],
+        currentValue,
+        flatType ? 'Town-inferred' : 'Select flat type first'
+    );
+}
+
+function getStoreyLevelLabel(value) {
+    const match = mapStoreyLevels.find(function(level) {
+        return String(level.value || '') === String(value || '');
+    });
+    return match ? String(match.label || match.value) : String(value || '');
 }
 
 function showBreadcrumb(town) {
@@ -1176,10 +1222,11 @@ function toggleScenarioPanel(forceOpen) {
 }
 
 function getScenarioState() {
+    const flatType = (mapFlatTypeSelect.value || '').trim();
     return {
-        flat_type: (mapFlatTypeSelect.value || '').trim(),
-        flat_model: (mapFlatModelSelect.value || '').trim(),
-        storey_range: (mapStoreyRangeSelect.value || '').trim(),
+        flat_type: flatType,
+        flat_model: flatType ? (mapFlatModelSelect.value || '').trim() : '',
+        storey_range: flatType ? (mapStoreyRangeSelect.value || '').trim() : '',
     };
 }
 
@@ -1200,16 +1247,19 @@ function getScenarioSummary(state = getScenarioState()) {
     const parts = [];
     if (state.flat_type) parts.push(state.flat_type);
     if (state.flat_model) parts.push(state.flat_model);
-    if (state.storey_range) parts.push(state.storey_range);
+    if (state.storey_range) parts.push(getStoreyLevelLabel(state.storey_range));
     if (parts.length) return parts.join(' · ');
     return 'Town overview active';
 }
 
-function getHeatmapInsight(state = getScenarioState()) {
+function getHeatmapInsight(state = getScenarioState(), fallbackCount = 0) {
+    const fallbackNote = fallbackCount > 0
+        ? ` ${fallbackCount.toLocaleString()} town${fallbackCount === 1 ? '' : 's'} currently use historical fallback because the model estimate was unavailable.`
+        : '';
     if (hasScenarioOverrides(state)) {
-        return `Comparing towns for ${getScenarioSummary(state)}. Hover a town to inspect the exact profile used there, then click to drill down into transactions.`;
+        return `Comparing towns for ${getScenarioSummary(state)}. Hover a town to inspect the exact profile used there, then click to drill down into transactions.${fallbackNote}`;
     }
-    return 'Showing model-generated town estimates inferred from each town\'s own market data. Hover a town to inspect the profile used, then click to drill down.';
+    return 'Showing town estimates inferred from each town\'s own market data. Hover a town to inspect the profile used, then click to drill down.' + fallbackNote;
 }
 
 function getHeatmapPeriodNote(state = getScenarioState()) {
@@ -1249,7 +1299,7 @@ async function loadHeatmap() {
     const state = getScenarioState();
     const params = buildHeatmapParams();
     const query = params.toString();
-    showLoading(hasScenarioOverrides(state) ? 'Running scenario model...' : 'Running town model...');
+    showLoading(hasScenarioOverrides(state) ? 'Running scenario estimates...' : 'Running town estimates...');
     setPeriodText(getHeatmapPeriodNote(state));
 
     try {
@@ -1268,22 +1318,27 @@ async function loadHeatmap() {
         const prices = data.map(d => Number(d.predicted_price)).filter(Number.isFinite);
         const minP = Math.min(...prices);
         const maxP = Math.max(...prices);
+        const fallbackCount = data.filter(d => d.estimate_source === 'historical_fallback').length;
 
         heatmapLayer.clearLayers();
 
         data.forEach(d => {
             if (!d.lat || !d.lng) return;
             const pred = Number(d.predicted_price);
-            const color = choroplethColor(pred, minP, maxP);
+            const color = townHeatmapColor(pred, minP, maxP);
             const predFmt = '$' + Math.round(pred).toLocaleString();
-            const profileParts = [d.flat_type, d.flat_model, d.storey_range].filter(Boolean);
+            const isFallback = d.estimate_source === 'historical_fallback';
+            const sourceLabel = isFallback ? 'Historical fallback' : 'Model estimate';
+            const warningLine = d.estimate_warning ? `${escapeHtml(d.estimate_warning)}<br>` : '';
+            const profileParts = [d.flat_type, d.flat_model, d.storey_range].filter(Boolean).map(escapeHtml);
             const profileLabel = profileParts.length ? profileParts.join(' · ') : '';
             const scenarioLine = hasScenarioOverrides(state)
-                ? `Scenario: ${getScenarioSummary(state)}<br>`
+                ? `Scenario: ${escapeHtml(getScenarioSummary(state))}<br>`
                 : '';
             const profileLine = hasScenarioOverrides(state) && profileLabel
                 ? `Profile used: ${profileLabel}<br>`
                 : '';
+            const townLabel = escapeHtml(d.town);
 
             const circle = L.circle([d.lat, d.lng], {
                 radius: 2000,
@@ -1296,8 +1351,9 @@ async function loadHeatmap() {
             circle.on('mouseover', function() { this.setStyle({ fillOpacity: 0.78 }); });
             circle.on('mouseout', function() { this.setStyle({ fillOpacity: 0.55 }); });
             circle.bindTooltip(`
-                <strong>${d.town}</strong><br>
-                Model estimate: <b>${predFmt}</b><br>
+                <strong>${townLabel}</strong><br>
+                ${sourceLabel}: <b>${predFmt}</b><br>
+                ${warningLine}
                 ${scenarioLine}
                 ${profileLine}
             `, { sticky: true });
@@ -1308,7 +1364,7 @@ async function loadHeatmap() {
                 interactive: false,
                 icon: L.divIcon({
                     className: 'district-label',
-                    html: `<div class="dl-town">${d.town}</div><div class="dl-price">${predFmt}</div>`,
+                    html: `<div class="dl-town">${townLabel}</div><div class="dl-price">${predFmt}</div>`,
                     iconSize: [140, 34],
                     iconAnchor: [70, 17],
                 })
@@ -1318,9 +1374,9 @@ async function loadHeatmap() {
             heatmapLayer.addLayer(labelMarker);
         });
 
-        updateLegend('heatmap', minP, maxP);
+        updateLegend('heatmap', minP, maxP, fallbackCount > 0);
         updateStats(data, 'heatmap');
-        setInsight(getHeatmapInsight(state));
+        setInsight(getHeatmapInsight(state, fallbackCount));
     } catch (e) {
         setInsight(e && e.message ? e.message : 'Failed to load model-based town estimates. Please try again.');
     } finally {
@@ -1368,6 +1424,10 @@ async function loadPins() {
     try {
         const resp = await fetch('/api/transactions?' + params);
         if (handleAuthFailure(resp)) return;
+        if (!resp.ok) {
+            const errorData = await resp.json().catch(() => ({}));
+            throw new Error(errorData.error || 'Transaction map request failed.');
+        }
         const data = await resp.json();
         const periodLabel = getTransactionPeriodLabel(data);
         setPeriodText(periodLabel);
@@ -1404,16 +1464,33 @@ async function loadPins() {
                 fillOpacity: isMatch ? 1 : 0.85,
             });
 
-            const predictUrl = `/predict?source=map_pin&auto_predict=1&town=${encodeURIComponent(txn.town)}&flat_type=${encodeURIComponent(txn.flat_type)}&flat_model=${encodeURIComponent(txn.flat_model || '')}&street_name=${encodeURIComponent(txn.street_name || '')}&block=${encodeURIComponent(txn.block || '')}&floor_area=${txn.floor_area_sqm || ''}&storey_range=${encodeURIComponent(txn.storey_range || '')}`;
-            const analysisUrl = `/analytics?town=${encodeURIComponent(txn.town)}&flat_type=${encodeURIComponent(txn.flat_type)}&flat_model=${encodeURIComponent(txn.flat_model || '')}&street_name=${encodeURIComponent(txn.street_name || '')}&block=${encodeURIComponent(txn.block || '')}&floor_area=${txn.floor_area_sqm || ''}&storey_range=${encodeURIComponent(txn.storey_range || '')}`;
+            const townValue = String(txn.town || '');
+            const flatTypeValue = String(txn.flat_type || '');
+            const flatModelValue = String(txn.flat_model || '');
+            const streetValue = String(txn.street_name || '');
+            const blockValue = String(txn.block || '');
+            const storeyValue = String(txn.storey_range || '');
+            const floorAreaValue = txn.floor_area_sqm ?? '';
+            const monthValue = String(txn.month || '');
+            const predictUrl = `/predict?source=map_pin&auto_predict=1&town=${encodeURIComponent(townValue)}&flat_type=${encodeURIComponent(flatTypeValue)}&flat_model=${encodeURIComponent(flatModelValue)}&street_name=${encodeURIComponent(streetValue)}&block=${encodeURIComponent(blockValue)}&floor_area=${encodeURIComponent(floorAreaValue)}&storey_range=${encodeURIComponent(storeyValue)}`;
+            const analysisUrl = `/analytics?town=${encodeURIComponent(townValue)}&flat_type=${encodeURIComponent(flatTypeValue)}&flat_model=${encodeURIComponent(flatModelValue)}&street_name=${encodeURIComponent(streetValue)}&block=${encodeURIComponent(blockValue)}&floor_area=${encodeURIComponent(floorAreaValue)}&storey_range=${encodeURIComponent(storeyValue)}`;
 
-            const txnFlatModel = txn.flat_model ? ` · ${txn.flat_model}` : '';
+            const priceLabel = Number.isFinite(price) ? '$' + Math.round(price).toLocaleString() : 'Price unavailable';
+            const addressLabel = escapeHtml([blockValue, streetValue].filter(Boolean).join(' ') || 'Address unavailable');
+            const flatTypeLabel = escapeHtml(flatTypeValue || 'Flat type unavailable');
+            const txnFlatModel = flatModelValue ? ` · ${escapeHtml(flatModelValue)}` : '';
+            const storeyLabel = escapeHtml(storeyValue || 'Storey unavailable');
+            const areaLabel = floorAreaValue !== '' && floorAreaValue !== null
+                ? `${escapeHtml(floorAreaValue)} sqm`
+                : 'Area unavailable';
+            const monthLabel = escapeHtml(monthValue || 'Month unavailable');
+            const townLabel = escapeHtml(townValue || 'Town unavailable');
             marker.bindPopup(`
-                <strong>${txn.block} ${txn.street_name}</strong><br>
-                <b style="font-size:1.05em;">$${Number(txn.resale_price).toLocaleString()}</b><br>
-                ${txn.flat_type}${txnFlatModel} · ${txn.storey_range}<br>
-                ${txn.floor_area_sqm} sqm · ${txn.month}<br>
-                <span style="color:#93c5fd">${txn.town}</span>
+                <strong>${addressLabel}</strong><br>
+                <b style="font-size:1.05em;">${priceLabel}</b><br>
+                ${flatTypeLabel}${txnFlatModel} · ${storeyLabel}<br>
+                ${areaLabel} · ${monthLabel}<br>
+                <span style="color:#93c5fd">${townLabel}</span>
                 <div style="margin-top:8px; display:flex; gap:6px;">
                     <a href="${predictUrl}" style="flex:1; text-align:center; padding:4px 8px; background:#2563eb; color:#fff; border-radius:6px; text-decoration:none; font-size:0.75rem; font-weight:600;">
                         <i class="bi bi-calculator" style="margin-right:3px;"></i>Predict
@@ -1448,7 +1525,7 @@ async function loadPins() {
         );
     } catch (e) {
         setPeriodText('Period unavailable');
-        setInsight('Failed to load transactions.');
+        setInsight(e && e.message ? e.message : 'Failed to load transactions.');
     } finally {
         hideLoading();
     }
@@ -1780,6 +1857,7 @@ document.getElementById('toggleHawkers').addEventListener('change', function() {
 
 mapFlatTypeSelect.addEventListener('change', function() {
     syncMapFlatModelOptions();
+    syncMapStoreyLevelOptions();
     updateScenarioSummary();
     if (currentMode === 'heatmap') loadHeatmap();
 });
@@ -1800,11 +1878,13 @@ scenarioResetBtn.addEventListener('click', function(event) {
     mapFlatModelSelect.value = '';
     mapStoreyRangeSelect.value = '';
     syncMapFlatModelOptions();
+    syncMapStoreyLevelOptions();
     updateScenarioSummary();
     if (currentMode === 'heatmap') loadHeatmap();
 });
 
 syncMapFlatModelOptions();
+syncMapStoreyLevelOptions();
 updateScenarioSummary();
 toggleScenarioPanel(false);
 setMapSidebarCollapsed(false);
