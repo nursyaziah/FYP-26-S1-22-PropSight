@@ -3,6 +3,24 @@
 
 {% block extra_head %}
 <style>
+/* Fullscreen sticky-footer stability for this page */
+html.propsight-root {
+  zoom: 1;
+}
+
+/* FLEXBOX STICKY FOOTER FIX */
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* Prevent navbar/footer/header from shrinking */
+body > nav, body > footer, body > header {
+  flex-shrink: 0;
+}
+
 /* ===== PREDICT PAGE LAYOUT ===== */
 .predict-shell {
   display: flex;
@@ -11,6 +29,7 @@
   align-items: flex-start;
   max-width: 1440px;
   margin: 0 auto;
+  flex-grow: 1;
 }
 
 /* ===== SIDEBAR ===== */

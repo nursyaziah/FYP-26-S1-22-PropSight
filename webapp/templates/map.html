@@ -3,9 +3,28 @@
 
 {% block extra_head %}
 <style>
+    /* Fullscreen sticky-footer stability for this page */
+    html.propsight-root {
+        zoom: 1;
+    }
+
+    /* FLEXBOX STICKY FOOTER FIX */
+    body {
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
+        min-height: 100dvh;
+    }
+    body > nav, body > footer, body > header {
+        flex-shrink: 0;
+    }
+
     .map-page {
         position: relative;
         min-height: calc(100vh - 76px);
+        flex-grow: 1;
+        display: flex;
+        flex-direction: column;
         background:
             radial-gradient(circle at 10% 10%, var(--map-page-glow-green), transparent 18%),
             radial-gradient(circle at 90% 16%, var(--map-page-glow-orange), transparent 18%),
@@ -63,10 +82,18 @@
         position: relative;
         height: calc(100vh - 110px);
         min-height: 700px;
+        flex-grow: 1;
+        height: auto;
         border-radius: 24px;
         overflow: hidden;
         border: 1px solid rgba(148, 163, 184, 0.16);
         box-shadow: 0 24px 50px rgba(2, 6, 23, 0.32);
+    }
+
+    .map-page > .container-fluid {
+        flex-grow: 1;
+        display: flex;
+        flex-direction: column;
     }
 
     #map {
