@@ -45,8 +45,9 @@ body {
     overflow-x: hidden;
 }
 
+/* 100% scale site-wide (map/predict previously overrode 0.8 — now unified) */
 html.propsight-root {
-    zoom: 0.8;
+    zoom: 1;
 }
 
 body.propsight-app {

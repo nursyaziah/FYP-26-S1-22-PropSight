@@ -3,11 +3,6 @@
 
 {% block extra_head %}
 <style>
-    /* Fullscreen sticky-footer stability for this page */
-    html.propsight-root {
-        zoom: 1;
-    }
-
     /* FLEXBOX STICKY FOOTER FIX */
     body {
         display: flex;
@@ -80,10 +75,10 @@
 
     .map-layout {
         position: relative;
-        height: calc(100vh - 110px);
-        min-height: 700px;
         flex-grow: 1;
-        height: auto;
+        /* Leaflet needs a definite height — do not use height:auto here */
+        height: calc(100vh - 110px);
+        min-height: 560px;
         border-radius: 24px;
         overflow: hidden;
         border: 1px solid rgba(148, 163, 184, 0.16);
@@ -94,10 +89,12 @@
         flex-grow: 1;
         display: flex;
         flex-direction: column;
+        min-height: 0;
     }
 
     #map {
         height: 100%;
+        min-height: 400px;
         width: 100%;
         border-radius: 24px;
         box-shadow: none;
@@ -917,6 +914,18 @@ let currentMapTheme = localStorage.getItem(MAP_THEME_STORAGE_KEY) === 'light' ? 
 let baseTileLayer = L.tileLayer(TILE_LAYER_CONFIG[currentMapTheme].url, TILE_LAYER_CONFIG[currentMapTheme].options);
 
 baseTileLayer.addTo(map);
+
+function scheduleMapResize() {
+    requestAnimationFrame(function () {
+        map.invalidateSize(true);
+    });
+}
+scheduleMapResize();
+setTimeout(scheduleMapResize, 250);
+window.addEventListener('resize', scheduleMapResize);
+document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') scheduleMapResize();
+});
 
 function applyMapTheme(theme) {
     const nextTheme = theme === 'light' ? 'light' : 'dark';
