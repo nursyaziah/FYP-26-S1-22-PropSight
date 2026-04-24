@@ -3983,24 +3983,49 @@ if (IS_PREMIUM) {
       const flatType = f.flat_type || '';
       const starters = [];
 
-      if (town && flatType) {
-        starters.push(`How has ${flatType} demand shifted in ${town}?`);
-        starters.push(`Is ${town} mature? How does that affect my value?`);
-        starters.push(`What's the lease decay picture for ${flatType} in ${town}?`);
-      } else if (town) {
-        starters.push(`What's driving prices in ${town}?`);
-        starters.push(`How is demand trending in ${town}?`);
-        starters.push(`Is ${town} a mature estate?`);
-      } else if (flatType) {
-        starters.push(`Where are ${flatType} flats in strongest demand?`);
-        starters.push(`How does ${flatType} pricing compare across towns?`);
-      } else {
-        starters.push('Which towns are seeing the biggest price changes?');
-        starters.push('How does mature vs non-mature affect prices?');
-        starters.push('Why does lease decay matter for resale?');
+      // Data-driven starters based on the user's own flat
+      const leaseCommence = predictionSeed && predictionSeed.lease_commence ? parseInt(predictionSeed.lease_commence) : null;
+      const remainingLease = leaseCommence ? Math.max(0, 99 - (new Date().getFullYear() - leaseCommence)) : null;
+      const predictedPrice = predictionSeed && predictionSeed.predicted_price ? parseFloat(predictionSeed.predicted_price) : null;
+      const avgRaw = document.getElementById('kpiAvgPrice') ? document.getElementById('kpiAvgPrice').textContent.replace(/[$,]/g, '') : '';
+      const avgPrice = avgRaw ? parseFloat(avgRaw) : null;
+      const trendUp = latestTrendData.length >= 2 &&
+          Number(latestTrendData[latestTrendData.length - 1].avg_price) > Number(latestTrendData[0].avg_price);
+
+      // Lease-sensitive question
+      if (remainingLease !== null && remainingLease < 60) {
+        starters.push(`With ${remainingLease} years left, how does lease affect my resale value?`);
+      } else if (remainingLease !== null && remainingLease < 75) {
+        starters.push('How will my remaining lease affect future resale?');
       }
 
-      starters.push('What should I understand about my flat\'s position?');
+      // Price vs area average question
+      if (predictedPrice && avgPrice && !isNaN(avgPrice) && avgPrice > 0) {
+        if (predictedPrice > avgPrice * 1.1) {
+          starters.push('Why is my flat priced above the area average?');
+        } else if (predictedPrice < avgPrice * 0.9) {
+          starters.push('Why is my flat below the area average?');
+        }
+      }
+
+      // Trend-direction question
+      if (latestTrendData.length >= 2 && !trendUp) {
+        starters.push(town ? `Why are prices declining in ${town}?` : 'Why are prices declining in this area?');
+      }
+
+      // Fill remaining slots with filter-aware fallbacks
+      if (town && flatType) {
+        if (starters.length < 3) starters.push(`How has ${flatType} demand shifted in ${town}?`);
+        if (starters.length < 3) starters.push(`What's the lease decay picture for ${flatType} in ${town}?`);
+      } else if (town) {
+        if (starters.length < 3) starters.push(`What's driving prices in ${town}?`);
+        if (starters.length < 3) starters.push(`Is ${town} a mature estate?`);
+      } else {
+        if (starters.length < 3) starters.push('Which towns are seeing the biggest price changes?');
+        if (starters.length < 3) starters.push('Why does lease decay matter for resale?');
+      }
+
+      starters.push("What should I understand about my flat's position?");
 
       return starters.slice(0, 4);
     }
