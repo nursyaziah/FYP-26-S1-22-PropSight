@@ -15,6 +15,10 @@
         min-height: 100vh;
         padding-bottom: 1.25rem;
     }
+    .container-terminal {
+        width: min(1440px, 95%);
+        margin: 0 auto;
+    }
     .dashboard-hero {
         background: #ffffff;
         border: 1px solid rgba(15, 23, 42, 0.06);
@@ -23,6 +27,8 @@
         box-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.08), 0 30px 60px -15px rgba(15, 23, 42, 0.12);
         position: relative;
         overflow: hidden;
+        padding-left: clamp(1rem, 1.6vw, 2rem) !important;
+        padding-right: clamp(1rem, 1.6vw, 2rem) !important;
     }
     .dashboard-hero::after {
         content: "";
@@ -36,45 +42,46 @@
     }
     .pf-select {
         width: 100%;
-        padding: 9px 34px 9px 12px;
-        border: 1.5px solid #e2e8f0;
-        border-radius: 14px;
+        padding: 12px 38px 12px 16px;
+        border: 1px solid transparent;
+        border-radius: 12px;
         font-size: 13.5px;
         color: #0f172a;
         background: #f8fafc url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24'%3E%3Cpath fill='%2364748b' d='m7 10 5 5 5-5z'/%3E%3C/svg%3E") no-repeat right 10px center;
         appearance: none;
         cursor: pointer;
-        transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s;
+        transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s, transform 0.2s;
     }
     .pf-select:focus {
         outline: none;
-        border-color: #2563eb;
-        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.11);
-        background-color: #ffffff;
+        border-color: transparent;
+        box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+        background-color: #f8fafc;
     }
     .pf-input {
         width: 100%;
-        padding: 9px 12px;
-        border: 1.5px solid #e2e8f0;
-        border-radius: 14px;
+        padding: 12px 16px;
+        border: 1px solid transparent;
+        border-radius: 12px;
         font-size: 13.5px;
         color: #0f172a;
         background: #f8fafc;
-        transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s;
+        transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s, transform 0.2s;
     }
     .pf-input:focus {
         outline: none;
-        border-color: #2563eb;
-        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.11);
-        background-color: #ffffff;
+        border-color: transparent;
+        box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+        background-color: #f8fafc;
     }
     .hint-text { font-size: 0.82rem; color: #64748b; }
     .hero-context-card {
         margin-top: 1rem;
-        padding: 1rem 1.05rem 1.05rem;
-        border-top: 1px solid rgba(15, 23, 42, 0.06);
-        background: linear-gradient(135deg, rgba(248, 250, 252, 0.96), rgba(239, 246, 255, 0.92));
+        padding: 1.5rem clamp(1.1rem, 1.7vw, 1.9rem);
+        border: none;
+        background: #ffffff;
         border-radius: 18px;
+        box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.05);
     }
     .hero-context-head {
         display: flex;
@@ -86,20 +93,35 @@
     .hero-context-badge {
         display: inline-flex;
         align-items: center;
-        gap: 0.35rem;
-        padding: 0.4rem 0.7rem;
-        border-radius: 999px;
-        background: rgba(15, 23, 42, 0.06);
-        color: #475569;
-        font-size: 0.74rem;
+        gap: 0.45rem;
+        color: #94a3b8;
+        font-size: 0.7rem;
         font-weight: 700;
-        letter-spacing: 0.04em;
+        letter-spacing: 0.08em;
         text-transform: uppercase;
         white-space: nowrap;
     }
+    .hero-context-badge::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background-color: #ef4444;
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+        animation: contextPulse 1.8s infinite;
+    }
     .hero-context-badge.active {
-        background: rgba(16, 185, 129, 0.12);
-        color: #047857;
+        color: #16a34a;
+    }
+    .hero-context-badge.active::before {
+        background-color: #22c55e;
+        animation: none;
+        box-shadow: none;
+    }
+    @keyframes contextPulse {
+        0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.45); }
+        70% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
     }
     .context-status {
         margin-bottom: 0.9rem;
@@ -119,16 +141,25 @@
     .hero-context-grid {
         display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 0.8rem;
+        gap: 1rem 1.1rem;
+    }
+    @media (min-width: 1400px) {
+        .hero-context-grid {
+            grid-template-columns: repeat(8, minmax(0, 1fr));
+            gap: 1.1rem 1.25rem;
+        }
+        .hero-context-field {
+            grid-column: span 2;
+        }
     }
     .hero-context-field label {
         display: block;
-        margin-bottom: 0.35rem;
-        font-size: 0.74rem;
+        margin-bottom: 0.28rem;
+        font-size: 0.7rem;
         font-weight: 700;
-        color: #475569;
+        color: #64748b;
         text-transform: uppercase;
-        letter-spacing: 0.05em;
+        letter-spacing: 0.5px;
     }
     .context-inline-hint {
         margin-top: 0.32rem;
@@ -139,17 +170,31 @@
     .hero-context-actions {
         display: flex;
         flex-wrap: wrap;
-        gap: 0.65rem;
+        gap: 0.85rem;
         align-items: center;
         margin-top: 0.95rem;
     }
     .hero-context-actions .btn {
-        border-radius: 999px;
+        border-radius: 12px;
         font-weight: 700;
+    }
+    .hero-context-submit {
+        box-shadow: 0 8px 20px -6px rgba(37, 99, 235, 0.4);
+    }
+    .hero-context-clear {
+        border-color: rgba(148, 163, 184, 0.45);
+        color: #64748b;
+        background: transparent;
+    }
+    .hero-context-clear:hover {
+        border-color: rgba(100, 116, 139, 0.55);
+        color: #334155;
+        background: rgba(248, 250, 252, 0.8);
     }
     .hero-context-note {
         font-size: 0.78rem;
         color: #64748b;
+        margin-left: auto;
     }
     .panel-card {
         background: #ffffff;
@@ -161,7 +206,7 @@
         border-radius: 20px;
         box-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.08), 0 30px 60px -15px rgba(15, 23, 42, 0.12);
     }
-    .panel-card .card-body { padding: 1.1rem 1.1rem 1rem; }
+    .panel-card .card-body { padding: 1.1rem clamp(1.2rem, 1.2vw, 1.55rem) 1rem; }
     .section-kicker {
         font-size: 0.72rem;
         text-transform: uppercase;
@@ -431,7 +476,7 @@
     .dash-kpi-bar {
         display: grid;
         grid-template-columns: repeat(4, 1fr);
-        gap: 0.85rem;
+        gap: 1rem;
     }
 
     .dash-kpi-card {
@@ -483,7 +528,7 @@
     .dash-layout {
         display: grid;
         grid-template-columns: 180px 1fr 280px;
-        gap: 1.1rem;
+        gap: 1.25rem;
         align-items: start;
     }
 
@@ -721,16 +766,16 @@
     .section-empty p  { color: #94a3b8; font-size: 0.84rem; margin: 0; }
 
     /* FAQ section below */
-    /* Align FAQ + expanded chat with the dash-center column */
+    /* Keep FAQ + expanded chat centered with the main container */
     .faq-section,
     #aiChatExpanded {
-        margin-left: calc(180px + 1.1rem);
-        margin-right: calc(280px + 1.1rem);
+        margin-left: auto;
+        margin-right: auto;
     }
     @media (max-width: 1199.98px) {
         .faq-section,
         #aiChatExpanded {
-            margin-left: calc(160px + 1.1rem);
+            margin-left: 0;
             margin-right: 0;
         }
     }
@@ -942,11 +987,18 @@
     }
 
     @media (max-width: 768px) {
+        .container-terminal {
+            width: 100%;
+            max-width: 100%;
+            padding-left: 0.75rem;
+            padding-right: 0.75rem;
+        }
         .hero-context-head,
         .hero-context-actions {
             flex-direction: column;
             align-items: stretch;
         }
+        .hero-context-note { margin-left: 0; }
         .hero-context-grid { grid-template-columns: 1fr; }
         .myflat-summary { flex-direction: column; }
         .myflat-details-grid { grid-template-columns: repeat(2, 1fr); }
@@ -983,7 +1035,7 @@
 
 {% block content %}
 <div class="analytics-page-wrapper">
-<div class="container-xl py-4">
+<div class="container-terminal py-4">
 
     <!-- ① DASHBOARD HERO ───────────────────────────────────────────────── -->
     <div class="dashboard-hero p-3 p-lg-4 mb-3">
@@ -1066,9 +1118,9 @@
                 </div>
                 <span class="hero-context-badge{% if prediction_seed and prediction_seed.get('predicted_price') %} active{% endif %}">
                     {% if prediction_seed and prediction_seed.get('predicted_price') %}
-                    Context loaded
+                    Context: Loaded
                     {% else %}
-                    Context not loaded
+                    Context: Unloaded
                     {% endif %}
                 </span>
             </div>
@@ -1186,10 +1238,10 @@
                 </div>
 
                 <div class="hero-context-actions">
-                    <button id="predictionSubmitBtn" class="btn btn-primary btn-sm" type="submit">
-                        <i class="bi bi-graph-up-arrow me-1"></i>Generate My Flat Context
+                    <button id="predictionSubmitBtn" class="btn btn-primary btn-sm hero-context-submit" type="submit">
+                        <i class="bi bi-cpu-fill me-1"></i>Generate My Flat Context
                     </button>
-                    <a href="{{ url_for('analytics') }}" class="btn btn-outline-secondary btn-sm">
+                    <a href="{{ url_for('analytics') }}" class="btn btn-outline-secondary btn-sm hero-context-clear">
                         <i class="bi bi-arrow-counterclockwise me-1"></i>Clear Context
                     </a>
                     <div class="hero-context-note">
@@ -1799,7 +1851,7 @@
     </div>
     {% endif %}
 
-</div><!-- end .container-xl -->
+</div><!-- end .container-terminal -->
 </div><!-- end .analytics-page-wrapper -->
 
 {% if is_premium %}
