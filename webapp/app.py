@@ -133,6 +133,93 @@ PROJECT_DIR = os.path.dirname(BASE_DIR)
 _PROPSIGHT_DU = (os.environ.get("PROPSIGHT_DISTANCE_UNIT") or "km").strip().lower()
 PROPSIGHT_DISTANCE_UNIT = _PROPSIGHT_DU if _PROPSIGHT_DU in ("km", "m") else "km"
 
+# Announced upcoming MRT stations (not yet open as of 2025). Coordinates are approximate.
+_UPCOMING_MRT_STATIONS = [
+    # Thomson-East Coast Line Phase 5
+    {"name": "Bedok South", "line": "TEL", "year": 2025, "lat": 1.3234, "lng": 103.9339},
+    # Jurong Region Line (expected ~2027–2029)
+    {"name": "Gek Poh", "line": "JRL", "year": 2027, "lat": 1.3440, "lng": 103.6950},
+    {"name": "Tawas", "line": "JRL", "year": 2027, "lat": 1.3457, "lng": 103.6858},
+    {"name": "Bahar Junction", "line": "JRL", "year": 2028, "lat": 1.3550, "lng": 103.6854},
+    {"name": "Bahar", "line": "JRL", "year": 2028, "lat": 1.3560, "lng": 103.6800},
+    {"name": "Tengah", "line": "JRL", "year": 2027, "lat": 1.3630, "lng": 103.6831},
+    {"name": "Tengah Plantation", "line": "JRL", "year": 2027, "lat": 1.3714, "lng": 103.6848},
+    {"name": "Tengah Park", "line": "JRL", "year": 2027, "lat": 1.3744, "lng": 103.6882},
+    {"name": "Hong Kah", "line": "JRL", "year": 2027, "lat": 1.3745, "lng": 103.7063},
+    {"name": "Corporation", "line": "JRL", "year": 2027, "lat": 1.3709, "lng": 103.7157},
+    {"name": "Jurong West", "line": "JRL", "year": 2028, "lat": 1.3671, "lng": 103.7243},
+    {"name": "Peng Kang Hill", "line": "JRL", "year": 2028, "lat": 1.3788, "lng": 103.7559},
+    {"name": "Nanyang Gateway", "line": "JRL", "year": 2028, "lat": 1.3634, "lng": 103.7662},
+    {"name": "Nanyang Crescent", "line": "JRL", "year": 2028, "lat": 1.3560, "lng": 103.7660},
+    {"name": "Pandan Reservoir", "line": "JRL", "year": 2028, "lat": 1.3400, "lng": 103.7620},
+    {"name": "Jurong Pier", "line": "JRL", "year": 2029, "lat": 1.3335, "lng": 103.7333},
+    # Cross Island Line Phase 1 (expected ~2030)
+    {"name": "Aviation Park", "line": "CRL", "year": 2030, "lat": 1.3734, "lng": 103.9872},
+    {"name": "Loyang", "line": "CRL", "year": 2030, "lat": 1.3718, "lng": 103.9704},
+    {"name": "Pasir Ris East", "line": "CRL", "year": 2030, "lat": 1.3707, "lng": 103.9553},
+    {"name": "Tampines North", "line": "CRL", "year": 2030, "lat": 1.3762, "lng": 103.9386},
+    {"name": "Defu", "line": "CRL", "year": 2030, "lat": 1.3514, "lng": 103.9127},
+    {"name": "Serangoon North", "line": "CRL", "year": 2030, "lat": 1.3680, "lng": 103.8680},
+    {"name": "Teck Ghee", "line": "CRL", "year": 2030, "lat": 1.3711, "lng": 103.8561},
+]
+
+_BLOCK_GEOCODE_CACHE: dict = {}
+
+
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    R = 6371.0
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlam = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def _geocode_block_onemap(block: str, street_name: str):
+    """Return (lat, lng) for a block address via OneMap, or None on failure. Results cached."""
+    key = f"{block}|{street_name}".upper().strip()
+    if key in _BLOCK_GEOCODE_CACHE:
+        return _BLOCK_GEOCODE_CACHE[key]
+
+    # Try progressively simpler query variants
+    queries = []
+    if block and street_name:
+        queries.append(f"BLK {block} {street_name}")
+        queries.append(f"{block} {street_name}")
+    if street_name:
+        queries.append(street_name)
+
+    import ssl
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+
+    result = None
+    for query in queries:
+        try:
+            qs = parse.urlencode({
+                "searchVal": query,
+                "returnGeom": "Y",
+                "getAddrDetails": "N",
+                "pageNum": "1",
+            })
+            req = urllib_request.Request(
+                f"https://www.onemap.gov.sg/api/common/elastic/search?{qs}",
+                headers={"User-Agent": "PropSight/1.0"},
+            )
+            with urllib_request.urlopen(req, timeout=6, context=ctx) as resp:
+                data = json.loads(resp.read())
+            hits = data.get("results", [])
+            if hits:
+                result = (float(hits[0]["LATITUDE"]), float(hits[0]["LONGITUDE"]))
+                break
+        except Exception as exc:
+            app.logger.debug("OneMap geocode failed for %r: %s", query, exc)
+
+    _BLOCK_GEOCODE_CACHE[key] = result
+    return result
+
+
 REFERENCE_DATA_DIR = _first_existing_path([
     os.environ.get("HDB_REFERENCE_DATA_DIR", ""),
     os.path.join(PROJECT_DIR, "Data Preprocessing", "reference_data"),
@@ -2317,6 +2404,11 @@ def _get_lease_year_range_data(town, street_name="", block=""):
 TOWNS = _get_towns()
 FLAT_MODELS = _get_flat_models()
 TOWN_DISTANCES = _get_town_avg_distances()
+TOWN_COORDS = {
+    town: {"lat": meta["avg_lat"], "lng": meta["avg_lng"]}
+    for town, meta in TOWN_DISTANCES.items()
+    if meta.get("avg_lat") and meta.get("avg_lng")
+}
 
 
 # ---------------------------------------------------------------------------
@@ -4226,6 +4318,113 @@ def predict():
         explanation=explanation,
         is_premium=is_premium,
     )
+
+
+@app.route("/api/upcoming_mrt_stations")
+@login_required
+def api_upcoming_mrt_stations():
+    return jsonify(_UPCOMING_MRT_STATIONS)
+
+
+@app.route("/api/mrt_whatif", methods=["POST"])
+@login_required
+def api_mrt_whatif():
+    """Estimate price change if a new (closer) MRT station opens near the user's flat."""
+    body = request.get_json(silent=True) or {}
+    town = (body.get("town") or "").strip()
+    flat_type = (body.get("flat_type") or "").strip()
+    flat_model = (body.get("flat_model") or "").strip()
+    street_name = (body.get("street_name") or "").strip()
+    block = (body.get("block") or "").strip()
+    station_name = (body.get("station_name") or "Upcoming MRT").strip()
+
+    try:
+        floor_area = float(body["floor_area"])
+        storey_range = str(body["storey_range"]).strip()
+        lease_commence = int(body["lease_commence"])
+    except (KeyError, TypeError, ValueError):
+        return jsonify({"error": "Invalid or missing flat details"}), 400
+
+    if not town or not flat_type:
+        return jsonify({"error": "Town and flat type are required"}), 400
+
+    to_model = (1.0 / 1000.0) if PROPSIGHT_DISTANCE_UNIT == "km" else 1.0
+    to_metres = 1000.0 if PROPSIGHT_DISTANCE_UNIT == "km" else 1.0
+
+    block_distances = None
+    if street_name:
+        block_distances = _get_block_distances(town, street_name, block)
+
+    # Resolve current dist_mrt for display
+    if block_distances and block_distances.get("dist_mrt") is not None:
+        current_dist_m = round(block_distances["dist_mrt"] * to_metres)
+    else:
+        dists = TOWN_DISTANCES.get(town, {})
+        raw = dists.get("avg_dist_mrt") or _distance_feature_defaults()["dist_mrt"]
+        current_dist_m = round(raw * to_metres)
+
+    # Determine new MRT distance
+    station_lat = body.get("station_lat")
+    station_lng = body.get("station_lng")
+    manual_dist_m = body.get("new_mrt_dist_m")
+
+    approx_note = None
+    if station_lat is not None and station_lng is not None:
+        # Try precise block geocoding first, fall back to town centroid
+        coords = _geocode_block_onemap(block, street_name) if (block or street_name) else None
+        if coords is None:
+            tc = TOWN_COORDS.get(town)
+            if tc:
+                coords = (tc["lat"], tc["lng"])
+                approx_note = f"Distance estimated from {town.title()} town centre (block could not be geocoded)."
+        if coords is None:
+            return jsonify({"error": "Could not determine flat location. Enter distance manually instead."}), 400
+        new_mrt_dist_m = _haversine_km(coords[0], coords[1], float(station_lat), float(station_lng)) * 1000
+    elif manual_dist_m is not None:
+        try:
+            new_mrt_dist_m = float(manual_dist_m)
+        except (TypeError, ValueError):
+            return jsonify({"error": "Invalid manual distance"}), 400
+    else:
+        return jsonify({"error": "Provide a station selection or enter a distance manually"}), 400
+
+    if new_mrt_dist_m < 50 or new_mrt_dist_m > 5000:
+        return jsonify({"error": f"Computed distance {round(new_mrt_dist_m)}m is outside the supported range (50–5000 m)"}), 400
+
+    if new_mrt_dist_m >= current_dist_m:
+        return jsonify({
+            "error": f"{station_name} ({round(new_mrt_dist_m)}m) is not closer than your current nearest MRT ({current_dist_m}m). No impact expected."
+        }), 400
+
+    # Current price (mirrors what was already shown on the predict page)
+    current_result = predict_price(
+        town, flat_type, flat_model, floor_area, storey_range, lease_commence,
+        override_distances=block_distances,
+    )
+    current_price = current_result["predicted_price"]
+
+    # New price with the closer MRT distance
+    new_overrides = dict(block_distances) if block_distances else {}
+    new_overrides["dist_mrt"] = new_mrt_dist_m * to_model
+    new_result = predict_price(
+        town, flat_type, flat_model, floor_area, storey_range, lease_commence,
+        override_distances=new_overrides,
+    )
+    new_price = new_result["predicted_price"]
+
+    delta = new_price - current_price
+    delta_pct = round(delta / current_price * 100, 1) if current_price else 0
+
+    return jsonify({
+        "current_price": round(current_price),
+        "new_price": round(new_price),
+        "delta": round(delta),
+        "delta_pct": delta_pct,
+        "current_dist_m": current_dist_m,
+        "new_dist_m": round(new_mrt_dist_m),
+        "station_name": station_name,
+        "approx_note": approx_note,
+    })
 
 
 @app.route("/save_prediction", methods=["POST"])
