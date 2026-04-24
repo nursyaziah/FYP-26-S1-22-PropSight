@@ -226,15 +226,56 @@
             align-items: center;
         }
 
-        .hero-bg-img {
+        .hero-slider-container {
             width: 95%;
             height: 550px;
-            object-fit: cover;
+            position: relative;
             border-radius: var(--radius-xl);
             box-shadow: var(--shadow-float);
-            position: relative;
-            z-index: 2;
             border: 4px solid white;
+            overflow: hidden;
+            z-index: 2;
+        }
+
+        .hero-slide {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            transition: opacity 1.5s ease-in-out;
+        }
+
+        .hero-slide.active {
+            opacity: 1;
+            z-index: 1;
+        }
+
+        .hero-slide img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scale(1);
+            transition: transform 8s ease-out;
+        }
+
+        .hero-slide.active img {
+            transform: scale(1.05);
+        }
+
+        .slide-caption {
+            position: absolute;
+            right: 22px;
+            bottom: 22px;
+            padding: 8px 14px;
+            border-radius: 999px;
+            background: rgba(18, 22, 30, 0.45);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            color: rgba(255, 255, 255, 0.95);
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
         }
 
         .glass-card-1 {
@@ -1625,7 +1666,7 @@
                 <ul class="navbar-nav ms-auto align-items-center gap-2">
                     <li class="nav-item"><a class="nav-link fw-600 px-3" href="#how-it-works">How it Works</a></li>
                     <li class="nav-item"><a class="nav-link fw-600 px-3" href="#platform">Platform</a></li>
-                    <li class="nav-item"><a class="nav-link fw-600 px-3" href="#xai">AI Insights</a></li>
+                    <li class="nav-item"><a class="nav-link fw-600 px-3" href="#xai">Explainability</a></li>
                     <li class="nav-item"><a class="nav-link fw-600 px-3" href="#comparison">Compare</a></li>
                     <li class="nav-item"><a class="nav-link fw-600 px-3" href="#media">Research</a></li>
                     <li class="nav-item ms-lg-3">
@@ -1650,24 +1691,60 @@
                     </div>
 
                     <h1 class="hero-title">
-                        Stop Guessing. <br>
-                        <span class="text-gradient">Know Your HDB.</span>
+                        Decode your HDB's <br>
+                        <span class="text-gradient">true value.</span>
                     </h1>
                     <p class="hero-subtitle">
-                        We analyze over 150,000 real transactions and key location factors to give you a valuation you
-                        can actually trust—instantly.
+                        A transparent second-opinion tool for homeowners. We use explainable AI and spatial analytics
+                        to reveal the true drivers behind your flat's estimated resale value.
                     </p>
                     <div class="d-flex flex-wrap gap-3">
                         <a href="/home" class="btn btn-primary-custom btn-custom fs-5 px-5 shadow-lg">Check My Flat
                             Price Now</a>
                         <a href="#how-it-works" class="btn btn-outline-custom btn-custom fs-6">See How It Works</a>
                     </div>
+                    <p class="text-muted small mt-3 mb-0" style="font-size: 0.8rem;">
+                        For reference only. PropSight provides academic second-opinions, not financial or investment
+                        advice.
+                    </p>
                 </div>
 
                 <div class="col-lg-6 reveal stagger-1">
                     <div class="hero-visual">
-                        <img src="https://images.unsplash.com/photo-1555899434-94d1368aa7af?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80"
-                            alt="Singapore HDB" class="hero-bg-img">
+                        <div class="hero-slider-container">
+                            <div class="hero-slide active">
+                                <img src="https://images.unsplash.com/photo-1655885038018-af848a2a4361?auto=format&fit=crop&w=1000&q=80"
+                                    alt="Modern Singapore HDB estates">
+                            </div>
+                            <div class="hero-slide">
+                                <img src="https://images.unsplash.com/photo-1605752994434-11d1a141a3f4?auto=format&fit=crop&w=1000&q=80"
+                                    alt="Mature and green Singapore neighborhoods">
+                            </div>
+                            <div class="hero-slide">
+                                <img src="https://images.unsplash.com/photo-1565696094681-e2c1afac63df?auto=format&fit=crop&w=1000&q=80"
+                                    alt="Toa Payoh housing estate in Singapore">
+                            </div>
+                            <div class="hero-slide">
+                                <img src="https://images.unsplash.com/photo-1688374593839-3168b31fa865?auto=format&fit=crop&w=1000&q=80"
+                                    alt="Singapore public housing architecture">
+                            </div>
+                            <div class="hero-slide">
+                                <img src="https://images.unsplash.com/photo-1581753324026-220e5fb0ce09?auto=format&fit=crop&w=1000&q=80"
+                                    alt="Singapore HDB blocks in daytime">
+                            </div>
+                            <div class="hero-slide">
+                                <img src="https://images.unsplash.com/photo-1692533436217-d888f542cffa?auto=format&fit=crop&w=1000&q=80"
+                                    alt="Architectural detail of Singapore apartment towers">
+                            </div>
+                            <div class="hero-slide">
+                                <img src="https://images.unsplash.com/photo-1550838771-2b5ce38db44a?auto=format&fit=crop&w=1000&q=80"
+                                    alt="Tree-lined Singapore housing estate">
+                            </div>
+                            <div class="hero-slide">
+                                <img src="https://images.unsplash.com/photo-1583475020986-749fca676893?auto=format&fit=crop&w=1000&q=80"
+                                    alt="High-rise Singapore homes under blue sky">
+                            </div>
+                        </div>
 
                         <div class="glass-card-1">
                             <div
@@ -1824,9 +1901,9 @@
 
     <section class="platform-section" id="platform">
         <div class="container text-center">
-            <h2 class="hero-title" style="font-size: 3.5rem;">Smart tools for big decisions.</h2>
+            <h2 class="hero-title" style="font-size: 3.5rem;">Smart tools for clear decisions.</h2>
             <p class="hero-subtitle mx-auto mb-5">From instant valuation to long-term market trends, we provide the
-                clarity you need to buy or sell with confidence.</p>
+                clarity you need to understand your market position.</p>
             <div class="tabs-container" id="tabs-container">
                 <div class="tab-indicator" id="tab-indicator"></div>
                 <div class="f-tab active" onclick="switchTab('tab1', this)"><i class="bi bi-magic"></i> Get Valuations
@@ -1942,10 +2019,10 @@
                     </div>
 
                     <div class="col-lg-5 order-1 order-lg-2">
-                        <h3 class="fw-bold mb-4 fs-1">Spot the "Value Buys" in any district.</h3>
+                        <h3 class="fw-bold mb-4 fs-1">Visualize your neighborhood's price context.</h3>
                         <p class="text-gray fs-5 mb-5 lh-lg">Navigate across Singapore with our interactive heatmap.
-                            Instantly identify which towns are overvalued and find hidden gems with the best growth
-                            potential.</p>
+                            See relative pricing levels and surface pricing anomalies using consistent, objective
+                            spatial context.</p>
                         <ul class="check-list mt-0">
                             <li><i class="bi bi-check-circle-fill"></i> Town-by-town color coding</li>
                             <li><i class="bi bi-check-circle-fill"></i> Filter by flat type and floor range</li>
@@ -2123,9 +2200,9 @@
                     </div>
 
                     <div class="col-lg-5 order-1 order-lg-2">
-                        <h3 class="fw-bold mb-4 fs-1">Objective, side-by-side decisions.</h3>
-                        <p class="text-gray fs-5 mb-5 lh-lg">Can't decide between a 4-Room in Bishan or a 5-Room in
-                            Tampines? Use our comparison tool to evaluate multiple properties simultaneously.</p>
+                        <h3 class="fw-bold mb-4 fs-1">Objective, data-driven comparisons.</h3>
+                        <p class="text-gray fs-5 mb-5 lh-lg">Evaluate your property against similar units based on
+                            fundamentals, not sentiment.</p>
                         <ul class="check-list mt-0">
                             <li><i class="bi bi-check-circle-fill"></i> Compare up to 5 properties at once (Premium)
                             </li>
@@ -2145,16 +2222,16 @@
             <div class="row align-items-center g-5">
                 <div class="col-lg-5 z-1 reveal">
                     <span
-                        class="badge bg-primary bg-opacity-25 text-info px-4 py-2 border border-info border-opacity-25 mb-4 rounded-pill fs-6">PropSight
-                        Premium</span>
-                    <h2 class="hero-title text-white mb-4" style="font-size: 3.5rem;">Understand the <span
-                            style="color: var(--secondary);">"Why"</span>.</h2>
+                        class="badge bg-primary bg-opacity-25 text-info px-4 py-2 border border-info border-opacity-25 mb-4 rounded-pill fs-6">Core
+                        Explainability Layer</span>
+                    <h2 class="hero-title text-white mb-4" style="font-size: 3.5rem;">Transparency first, estimate
+                        second.</h2>
                     <p class="fs-5 mb-5" style="color: #94a3b8; line-height: 1.8;">
-                        Black-box AI is useless for real estate. Our integration with Explainable AI translates complex
-                        predictive metrics into plain English.
+                        PropSight is built to explain every estimate. Our Explainable AI translates complex predictive
+                        signals into homeowner-friendly reasoning you can inspect feature by feature.
                     </p>
-                    <a href="/register?plan=premium" class="btn btn-outline-light btn-custom fs-6 mt-2 py-3 px-5">Unlock
-                        AI Insights</a>
+                    <a href="/register?plan=premium" class="btn btn-outline-light btn-custom fs-6 mt-2 py-3 px-5">Access
+                        Deepest Transparency</a>
                 </div>
 
                 <div class="col-lg-6 offset-lg-1 z-1 reveal stagger-2">
@@ -2184,7 +2261,7 @@
                         <div class="mt-4 pt-3 border-top border-white border-opacity-10">
                             <div class="factor-row mb-3">
                                 <div class="d-flex justify-content-between mb-1 small fw-bold">
-                                    <span class="text-white-50">Location Premium (Bishan)</span>
+                                    <span class="text-white-50">Neighborhood Context (Bishan)</span>
                                     <span class="text-success">+$4X,XXX</span>
                                 </div>
                                 <div class="factor-bar-bg">
@@ -2212,8 +2289,8 @@
                         </div>
 
                         <div class="chat-bubble mt-4">
-                            "PropSight AI identifies <span class="highlight-green">Location Premium</span> as your
-                            flat's strongest asset."
+                            "PropSight AI highlights <span class="highlight-green">Neighborhood Context</span> as the
+                            strongest positive contributor to this estimate."
                         </div>
                     </div>
                 </div>
@@ -2300,7 +2377,7 @@
                         <thead class="bg-primary text-white">
                             <tr>
                                 <th class="p-4 fs-5">Feature</th>
-                                <th class="p-4 fs-5 text-center">Standard Agents</th>
+                                <th class="p-4 fs-5 text-center">Professional Transparency</th>
                                 <th class="p-4 fs-5 text-center bg-white text-primary">PropSight</th>
                             </tr>
                         </thead>
@@ -2339,7 +2416,7 @@
                 <span class="badge bg-success bg-opacity-10 text-success px-4 py-2 rounded-pill mb-3 fw-bold fs-6">Wall
                     of Love</span>
                 <h2 class="hero-title" style="font-size: 3.5rem;">Trusted by Singaporeans.</h2>
-                <p class="hero-subtitle mx-auto">Hear how PropSight is helping buyers, sellers, and agents make
+                <p class="hero-subtitle mx-auto">Hear how PropSight is helping buyers, sellers, and professionals make
                     data-driven decisions.</p>
                 <a href="/review" class="btn btn-outline-custom rounded-pill mt-3"><i class="bi bi-pencil-square"></i> Share Your Experience</a>
                 <p class="text-secondary small mt-2 mb-0">Sign in required. You can remove your review anytime.</p>
@@ -2360,7 +2437,8 @@
         <div class="container">
             <div class="text-center mb-5 pb-4 reveal">
                 <h2 class="hero-title" style="font-size: 3.5rem;">Transparent Pricing</h2>
-                <p class="hero-subtitle mx-auto">{{ premium_plan.description }}
+                <p class="hero-subtitle mx-auto">Choose how deeply you want to inspect each estimate, from essential
+                    context to full feature-by-feature explainability.
                 </p>
             </div>
 
@@ -2388,14 +2466,14 @@
                 <div class="col-lg-4 col-md-6 reveal stagger-2">
                     <div class="pricing-card pro">
                         <div class="pro-badge">RECOMMENDED</div>
-                        <h4 class="fw-bold text-primary mb-2">{{ premium_plan.name }}</h4>
-                        <p class="text-gray mb-4 fw-medium">For serious buyers and analysts.</p>
+                        <h4 class="fw-bold text-primary mb-2">Maximum Transparency</h4>
+                        <p class="text-gray mb-4 fw-medium">For informed homeowners.</p>
                         <div class="d-flex align-items-baseline mb-5">
                             <h2 class="price-value mb-0 text-dark">{{ premium_price_display }}</h2>
                             <span class="text-gray ms-2 fw-bold">{{ premium_plan.billing_period }}</span>
                         </div>
                         <a href="/register?plan=premium"
-                            class="btn btn-primary-custom w-100 btn-custom py-3 fs-6">Upgrade to Premium</a>
+                            class="btn btn-primary-custom w-100 btn-custom py-3 fs-6">Access Maximum Transparency</a>
 
                         <ul class="check-list mt-5">
                             {% for benefit in premium_plan.benefits %}
@@ -2697,6 +2775,16 @@
         }
         pollLandingStats();
         setInterval(pollLandingStats, 600000);
+
+        const heroSlides = document.querySelectorAll('.hero-slide');
+        let activeHeroSlideIndex = 0;
+        if (heroSlides.length > 1) {
+            setInterval(() => {
+                heroSlides[activeHeroSlideIndex].classList.remove('active');
+                activeHeroSlideIndex = (activeHeroSlideIndex + 1) % heroSlides.length;
+                heroSlides[activeHeroSlideIndex].classList.add('active');
+            }, 5000);
+        }
 
         const slider = document.getElementById('slider');
 
