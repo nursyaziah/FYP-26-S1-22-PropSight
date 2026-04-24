@@ -511,6 +511,12 @@
 }
 .ai-fallback-link:hover { text-decoration: underline; }
 .ai-fallback-link .bi { font-size: 0.9rem; }
+.ai-generated-disclaimer {
+  color: #64748b;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  margin-top: 0.5rem;
+}
 </style>
 {% endblock %}
 
@@ -1251,6 +1257,12 @@ if (IS_PREMIUM && HAS_RESULTS && PAYLOADS.length >= 2) {
         return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     }
 
+    var AI_GENERATED_DISCLAIMER_TEXT = 'AI-generated explanation based on the prediction. May contain errors.';
+
+    function buildAiGeneratedDisclaimerHtml() {
+        return '<p class="ai-generated-disclaimer mb-0">' + AI_GENERATED_DISCLAIMER_TEXT + '</p>';
+    }
+
     function buildComparisonAiFallback() {
         return '<div class="ai-fallback-panel">' +
             '<div class="ai-fallback-title"><i class="bi bi-cloud-slash"></i> AI analysis offline</div>' +
@@ -1285,6 +1297,8 @@ if (IS_PREMIUM && HAS_RESULTS && PAYLOADS.length >= 2) {
             });
             if (!html) {
                 html = '<div class="text-muted small">No AI explanations available.</div>';
+            } else {
+                html += buildAiGeneratedDisclaimerHtml();
             }
             aiContent.innerHTML = html;
         })

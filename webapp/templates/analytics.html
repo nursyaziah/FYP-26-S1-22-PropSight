@@ -239,6 +239,12 @@
         line-height: 1.55;
     }
     .ai-faq-item.expanded .ai-faq-answer { display: block; }
+    .ai-generated-disclaimer {
+        color: #64748b;
+        font-size: 0.72rem;
+        line-height: 1.4;
+        margin-top: 0.45rem;
+    }
     .ai-faq-shimmer {
         height: 40px;
         border-radius: 10px;
@@ -1924,6 +1930,12 @@ function renderAiMarkdown(text) {
         ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'ul', 'ol', 'li', 'code', 'blockquote', 'a'],
         ALLOWED_ATTR: ['href', 'target', 'rel'],
     });
+}
+
+const AI_GENERATED_DISCLAIMER_TEXT = 'AI-generated explanation based on the prediction. May contain errors.';
+
+function buildAiGeneratedDisclaimerHtml() {
+    return '<div class="ai-generated-disclaimer">' + AI_GENERATED_DISCLAIMER_TEXT + '</div>';
 }
 
 function buildAiFallbackHtml(variant) {
@@ -3796,6 +3808,7 @@ function renderFaqGroup(containerId, questions) {
             '<div class="ai-faq-answer"></div>' +
             '</div>';
     });
+    html += buildAiGeneratedDisclaimerHtml();
     if (!IS_PREMIUM) {
         html += '<div class="ai-faq-counter" id="aiFaqCounter">' + aiAnswersRemaining + ' of {{ ai_daily_limit }} questions remaining today</div>';
     }
@@ -3945,8 +3958,9 @@ async function expandFaqItem(item) {
             return;
         }
         if (!resp.ok) throw new Error('AI error');
-        const result    = await resp.json();
-        const formatted = renderAiMarkdown(result.answer);
+        const result = await resp.json();
+        const answer = String(result.answer || '').trim();
+        const formatted = renderAiMarkdown(answer || 'No response received.') + (answer ? buildAiGeneratedDisclaimerHtml() : '');
         aiFaqAnswerCache[question] = formatted;
         answerEl.innerHTML = formatted;
 
@@ -4088,12 +4102,18 @@ if (IS_PREMIUM) {
       renderSuggestions(buildChatStarters());
     }
 
-    function appendBubble(text, role) {
+    function appendBubble(text, role, showDisclaimer) {
         const bubble = document.createElement('div');
         bubble.className = 'ai-chat-bubble ' + (role === 'user' ? 'ai-chat-user' : 'ai-chat-bot');
         bubble.innerHTML = (role === 'user')
             ? escapeHtml(text).replace(/\n/g, '<br>')
             : renderAiMarkdown(text);
+        if (showDisclaimer && role !== 'user') {
+            const note = document.createElement('div');
+            note.className = 'ai-generated-disclaimer';
+            note.textContent = AI_GENERATED_DISCLAIMER_TEXT;
+            bubble.appendChild(note);
+        }
         chatMessages.appendChild(bubble);
         chatMessages.scrollTop = chatMessages.scrollHeight;
         return bubble;
@@ -4139,9 +4159,10 @@ if (IS_PREMIUM) {
                 }
             } else {
                 const result = await resp.json();
+                const reply = String(result.reply || '').trim();
                 chatHistory.push({ role: 'user', text });
-                chatHistory.push({ role: 'model', text: result.reply });
-                appendBubble(result.reply, 'bot');
+                chatHistory.push({ role: 'model', text: reply });
+                appendBubble(reply || 'No response received.', 'bot', Boolean(reply));
                 renderSuggestions(result.suggestions);
             }
         } catch (e) {
