@@ -5,9 +5,7 @@
 <style>
     .map-page {
         position: relative;
-        display: flex;
-        flex-direction: column;
-        min-height: 0;
+        min-height: calc(100vh - 76px);
         background:
             radial-gradient(circle at 10% 10%, var(--map-page-glow-green), transparent 18%),
             radial-gradient(circle at 90% 16%, var(--map-page-glow-orange), transparent 18%),
@@ -61,19 +59,10 @@
         --map-attribution-text: #475569;
     }
 
-    .map-page > .container-fluid {
-        flex: 1 1 auto;
-        display: flex;
-        flex-direction: column;
-        min-width: 0;
-        min-height: 0;
-    }
-
     .map-layout {
         position: relative;
-        flex: 1 1 auto;
-        min-height: 560px;
-        height: clamp(480px, calc(100dvh - 220px), 1100px);
+        height: calc(100vh - 110px);
+        min-height: 700px;
         border-radius: 24px;
         overflow: hidden;
         border: 1px solid rgba(148, 163, 184, 0.16);
