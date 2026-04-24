@@ -33,15 +33,37 @@
             --transition-bounce: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
 
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            width: 100%;
+            overflow-x: hidden;
+        }
+
         body {
             font-family: 'Plus Jakarta Sans', sans-serif;
             color: var(--dark);
             background-color: #ffffff;
-            overflow-x: hidden;
             scroll-behavior: smooth;
             zoom: 0.8;
             -moz-transform: scale(0.8);
             -moz-transform-origin: top center;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
+        }
+
+        .landing-main {
+            flex: 1 0 auto;
+            min-width: 0;
         }
 
         .reveal {
@@ -1649,6 +1671,8 @@
             background: var(--light);
             border-top: 1px solid var(--border);
             padding: 80px 0 40px;
+            flex-shrink: 0;
+            margin-top: auto;
         }
     </style>
 </head>
@@ -1678,6 +1702,7 @@
         </div>
     </nav>
 
+    <main class="landing-main">
     <section class="hero-section">
         <div class="aurora-glow-1"></div>
         <div class="aurora-glow-2"></div>
@@ -2486,7 +2511,9 @@
         </div>
     </section>
 
-    <footer class="py-5" style="background: var(--dark); color: white; margin-top: 80px;">
+    </main>
+
+    <footer class="py-5" style="background: var(--dark); color: white;">
         <div class="container">
             <div class="row g-5">
                 <div class="col-lg-4">

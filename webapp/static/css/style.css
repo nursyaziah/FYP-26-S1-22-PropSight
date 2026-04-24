@@ -33,6 +33,18 @@
     --shadow-lg: var(--shadow-float);
 }
 
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    width: 100%;
+    overflow-x: hidden;
+}
+
 html.propsight-root {
     zoom: 0.8;
 }
@@ -47,10 +59,14 @@ body.propsight-app {
     min-height: 100vh;
     display: flex;
     flex-direction: column;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
 }
 
 main {
-    flex: 1;
+    flex: 1 0 auto;
+    min-width: 0;
 }
 
 .propsight-app .text-primary {
@@ -1885,6 +1901,8 @@ h6,
 footer {
     background: var(--navy) !important;
     border-top: 1px solid rgba(255, 255, 255, 0.06);
+    flex-shrink: 0;
+    margin-top: auto;
 }
 
 footer .text-muted {
@@ -2123,7 +2141,7 @@ footer .text-muted {
     .premium-toast-container {
         right: 16px;
         bottom: 16px;
-        max-width: calc(100vw - 32px);
+        max-width: calc(100% - 32px);
     }
 }
 
