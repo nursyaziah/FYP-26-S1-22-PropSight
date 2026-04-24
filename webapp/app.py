@@ -5288,7 +5288,7 @@ The charts listed above are also attached as images. Analyse both the data summa
 
 Generate 3-6 questions an HDB homeowner (someone who already owns a flat) would ask about this data. Focus on ownership concerns: how their flat's value is changing, lease depreciation impact, whether their area is in demand, and how their flat compares to similar ones nearby.
 Group the questions by chart topic. Each group should have 1-2 questions.
-Questions must be SPECIFIC to the patterns shown — not generic.
+If data is limited or sparse, ask questions about what that limited data or trend could mean for a homeowner — always produce at least one question per group.
 Focus on "why" and "what does this mean" questions — NOT "what happened" questions (the user can see the charts).
 Good: "Why did prices spike after 2020?" or "Is this a good time to buy a 4-room here?"
 Bad: "What is the average price trend?" or "How many transactions were there?"
@@ -5297,7 +5297,7 @@ Keep questions SHORT (under 20 words each).
 Return ONLY valid JSON in this exact format, with no other text:
 {{"groups": {{"value": ["question1", "question2"], "demand": ["question1"], "position": ["question1"], "lease": ["question1"]}}}}
 
-Use only these group keys: value (how my flat's value is changing), demand (is my area popular), position (how my flat compares), lease (how remaining lease affects value). Omit a group if no interesting question exists for it."""
+You MUST include all four group keys: value, demand, position, lease. Each must have at least one question."""
 
 _AI_COMPARISON_PROMPT = """You are a Singapore HDB (public housing) market analyst.
 The user is comparing {n} HDB properties side by side.
@@ -5337,6 +5337,12 @@ Instead, explain what the data MEANS for homeowners in plain, simple language:
 - What's causing the changes? (policy changes, cooling measures, interest rates, new MRT lines, grants, COVID effects)
 - Help them understand where their flat sits relative to the market (above or below average for the area, and why)
 - If the "THE USER'S OWN FLAT" block above is populated, tie your answer specifically to that flat wherever relevant. Refer to it as "your flat" not "the user's flat".
+
+Singapore HDB context to use where relevant:
+- Short remaining lease (<30 years) limits CPF usage and bank loan eligibility, which directly reduces buyer pool and resale value.
+- HDB flats have a 5-year Minimum Occupation Period (MOP) before they can be sold on the open market — this restricts supply in any given year.
+- Low transaction count for a specific block often reflects estate composition (fewer units of that type) or owners holding past MOP, not necessarily low demand.
+- Price swings on blocks with fewer than 20 transactions can be driven by just 1–2 outlier sales; this is common for niche flat types or specific blocks.
 
 Avoid jargon and technical terms. Write as if explaining to someone who doesn't follow the property market.
 Do not give buy/sell/hold/renovate/rent advice — PropSight is decision-support only. If the question asks for a recommendation, answer the FACTUAL part if there is one (e.g. "is demand rising here" has a factual answer), then steer the user toward relevant data PropSight already shows: lease decay, comparable transactions, demand trend, position vs town average. Never tell them what to do with their flat.
@@ -5383,7 +5389,7 @@ def api_ai_questions():
         psf_summary=json.dumps(chart_data.get("psf", []), default=str)[:300],
     )
 
-    text = _call_gemini(prompt, max_tokens=2048, images=images, json_mode=True)
+    text = _call_gemini(prompt, max_tokens=512, json_mode=True)
     if not text:
         print("[AI Questions] _call_gemini returned None — both models failed", flush=True)
         return jsonify({"groups": {}, "tier": session.get("subscription_tier", "general"), "remaining": 0, "ai_unavailable": True})
@@ -5465,7 +5471,7 @@ def api_ai_answer():
         question=question,
     )
 
-    text = _call_gemini(prompt, max_tokens=2048, images=images)
+    text = _call_gemini(prompt, max_tokens=512, images=images)
     if not text:
         return jsonify({"error": "AI temporarily unavailable"}), 503
 

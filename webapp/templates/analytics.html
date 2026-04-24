@@ -3448,6 +3448,10 @@ document.getElementById('clearLocationBtn').addEventListener('click', clearLocat
     await refreshDashboard();
     const focusParam = pageParams.get('focus');
     if (focusParam) switchSection(focusParam);
+    if (IS_PREMIUM) {
+        const _f = getFilters();
+        if (_f.town || _f.street_name || _f.flat_type) debouncedLoadAiFaq();
+    }
 })();
 
 let leaseDecChart;
