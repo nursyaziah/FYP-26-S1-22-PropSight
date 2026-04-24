@@ -1362,6 +1362,7 @@
     {# /GENAI Q&A #}
 
     {# ── MRT WHAT-IF (delay 625ms) ── #}
+    {% if is_premium %}
     <div class="result-block mrt-whatif-card" style="animation-delay:625ms;">
       <span class="p-kicker">Upcoming MRT</span>
       <h3 class="section-title-lg" style="font-size:19px;margin-bottom:6px;">New MRT Impact Estimator</h3>
@@ -1386,6 +1387,27 @@
       </div>
       <div id="mrtWhatifResult" style="display:none;" class="mrt-whatif-result"></div>
     </div>
+    {% else %}
+    <div class="result-block shap-lock-card" style="animation-delay:625ms;">
+      <div class="card-head">
+        <div>
+          <span class="p-kicker">Upcoming MRT</span>
+          <h3 class="section-title-lg">Unlock the MRT Impact Estimator</h3>
+          <p style="font-size:13.5px;color:#64748b;margin-top:6px;margin-bottom:0;">See exactly how much a new MRT station could add to your flat's resale value — powered by your prediction model.</p>
+        </div>
+        <span class="premium-badge">Premium only</span>
+      </div>
+      <div class="lock-chips">
+        <span class="lock-chip pos">CRL &amp; JRL price uplift</span>
+        <span class="lock-chip pos">Auto distance from your block</span>
+        <span class="lock-chip">23 upcoming stations</span>
+        <span class="lock-chip">Model-backed estimate</span>
+      </div>
+      <a href="{{ url_for('pricing') }}" class="btn-estimate" style="max-width:210px;">
+        <i class="bi bi-gem"></i> Upgrade to Premium
+      </a>
+    </div>
+    {% endif %}
     {# /MRT WHAT-IF #}
 
     {# ── SECTION 4: RECENT COMPARABLES (delay 750ms) ── #}

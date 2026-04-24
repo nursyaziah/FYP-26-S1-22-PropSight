@@ -4323,13 +4323,17 @@ def predict():
 @app.route("/api/upcoming_mrt_stations")
 @login_required
 def api_upcoming_mrt_stations():
+    if session.get("subscription_tier", "general") != "premium":
+        return jsonify({"error": "Premium feature"}), 403
     return jsonify(_UPCOMING_MRT_STATIONS)
 
 
 @app.route("/api/mrt_whatif", methods=["POST"])
 @login_required
 def api_mrt_whatif():
-    """Estimate price change if a new (closer) MRT station opens near the user's flat."""
+    """Estimate price change if a new (closer) MRT station opens near the user's flat. Premium only."""
+    if session.get("subscription_tier", "general") != "premium":
+        return jsonify({"error": "Premium feature"}), 403
     body = request.get_json(silent=True) or {}
     town = (body.get("town") or "").strip()
     flat_type = (body.get("flat_type") or "").strip()
