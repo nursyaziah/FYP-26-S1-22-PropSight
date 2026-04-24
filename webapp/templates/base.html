@@ -136,8 +136,8 @@
     })();
     </script>
 
-    <!-- Main content -->
-    <main>
+    <!-- Main content (flex-grow fills space between nav and footer on every base page) -->
+    <main id="propsight-main" class="propsight-main">
         <!-- Flash messages -->
         {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
@@ -156,7 +156,9 @@
         </div>
         {% endif %}
         {% endwith %}
-        {% block content %}{% endblock %}
+        <div class="propsight-main-body">
+            {% block content %}{% endblock %}
+        </div>
     </main>
 
     <!-- Footer -->
@@ -199,8 +201,9 @@
             container.className = "premium-toast-container";
             container.setAttribute("aria-live", "polite");
             container.setAttribute("aria-atomic", "true");
-            var main = document.querySelector("main");
-            if (main) main.insertBefore(container, main.firstChild);
+            var main = document.querySelector("main.propsight-main, #propsight-main, main");
+            var anchor = main && main.querySelector(".propsight-main-body");
+            if (main) main.insertBefore(container, anchor || main.firstChild);
         }
         var toast = document.createElement("div");
         toast.className = "premium-toast premium-toast--success";

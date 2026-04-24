@@ -41,6 +41,8 @@
 
 html,
 body {
+    height: 100%;
+    margin: 0;
     width: 100%;
     overflow-x: hidden;
 }
@@ -57,6 +59,7 @@ body.propsight-app {
         radial-gradient(circle at 92% 8%, rgba(16, 185, 129, 0.07), transparent 28%),
         linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
     min-height: 100vh;
+    min-height: 100dvh;
     display: flex;
     flex-direction: column;
     -webkit-font-smoothing: antialiased;
@@ -64,9 +67,65 @@ body.propsight-app {
     text-rendering: optimizeLegibility;
 }
 
-main {
+/* Sticky footer shell: nav + main + footer (all base.html pages, including Map & Predict) */
+body.propsight-app > nav.navbar {
+    flex-shrink: 0;
+}
+
+/* Fixed progress bar is still a flex child; collapse its layout box so it does not split the column */
+body.propsight-app > #pageProgress {
+    flex: 0 0 0;
+    align-self: stretch;
+    height: 0;
+    min-height: 0;
+    overflow: visible;
+}
+
+body.propsight-app > main.propsight-main,
+main.propsight-main {
     flex: 1 0 auto;
+    display: flex;
+    flex-direction: column;
     min-width: 0;
+    min-height: 0;
+}
+
+.propsight-main-body {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    width: 100%;
+}
+
+/* Fixed toasts are still flex children of <main>; collapse their layout box */
+main.propsight-main > .premium-toast-container {
+    flex: 0 0 0;
+    align-self: stretch;
+    height: 0;
+    min-height: 0;
+    overflow: visible;
+}
+
+/* Primary routes: grow with the shell so short pages still pin the global footer */
+.propsight-main-body > .map-page,
+.propsight-main-body > .predict-shell,
+.propsight-main-body > .analytics-page-wrapper {
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
+}
+
+.propsight-main-body > .analytics-page-wrapper {
+    display: flex;
+    flex-direction: column;
+}
+
+.propsight-main-body .analytics-page-wrapper > .container-terminal {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
 }
 
 .propsight-app .text-primary {
