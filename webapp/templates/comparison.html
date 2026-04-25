@@ -146,25 +146,6 @@ body.propsight-app {
   box-shadow: 0 2px 6px rgba(37,99,235,0.35);
   cursor: pointer;
 }
-.addr-toggle {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: #f8fafc;
-  border: 1.5px dashed #e2e8f0;
-  border-radius: 10px;
-  padding: 9px 14px;
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 13px;
-  font-weight: 600;
-  color: #64748b;
-  cursor: pointer;
-  transition: border-color 0.2s, color 0.2s, background 0.2s;
-}
-.addr-toggle:hover { border-color: #2563eb; color: #2563eb; background: rgba(37,99,235,0.03); }
-.addr-toggle .chevron { transition: transform 0.25s; }
-.addr-toggle[aria-expanded="true"] .chevron { transform: rotate(180deg); }
 .btn-estimate {
   width: 100%;
   padding: 13px 28px;
@@ -555,6 +536,7 @@ body.propsight-app {
   line-height: 1.4;
   margin-top: 0.5rem;
 }
+
 </style>
 {% endblock %}
 
@@ -638,26 +620,19 @@ body.propsight-app {
                         </div>
 
                         <div class="pf-group">
-                            <button type="button" class="addr-toggle" id="addrToggleBtn_{{ panel.prefix }}"
-                                    data-bs-toggle="collapse" data-bs-target="#addrCollapse_{{ panel.prefix }}"
-                                    aria-expanded="{{ 'true' if (panel.form_data.get('street_name') or panel.form_data.get('block')) else 'false' }}">
-                                <span><i class="bi bi-geo-alt me-1"></i>Street &amp; Block <em style="font-style:normal;font-weight:400;font-size:11.5px;color:#94a3b8;">optional</em></span>
-                                <i class="bi bi-chevron-down chevron" style="font-size:12px;"></i>
-                            </button>
-                            <div class="collapse {{ 'show' if (panel.form_data.get('street_name') or panel.form_data.get('block')) else '' }}" id="addrCollapse_{{ panel.prefix }}" style="margin-top:10px;">
-                                <div class="pf-row">
-                                    <div class="pf-group" style="flex:2;">
-                                        <label class="pf-label" for="{{ panel.prefix }}Street">Street</label>
-                                        <select id="{{ panel.prefix }}Street" name="{{ panel.prefix }}_street_name" class="pf-select">
-                                            <option value="">Any street...</option>
-                                        </select>
-                                    </div>
-                                    <div class="pf-group">
-                                        <label class="pf-label" for="{{ panel.prefix }}Block">Block</label>
-                                        <select id="{{ panel.prefix }}Block" name="{{ panel.prefix }}_block" class="pf-select">
-                                            <option value="">Any block...</option>
-                                        </select>
-                                    </div>
+                            <label class="pf-label">Street &amp; Block</label>
+                            <div class="pf-row">
+                                <div class="pf-group" style="flex:2;">
+                                    <label class="pf-label" for="{{ panel.prefix }}Street">Street</label>
+                                    <select id="{{ panel.prefix }}Street" name="{{ panel.prefix }}_street_name" class="pf-select" required>
+                                        <option value="">Select street...</option>
+                                    </select>
+                                </div>
+                                <div class="pf-group">
+                                    <label class="pf-label" for="{{ panel.prefix }}Block">Block</label>
+                                    <select id="{{ panel.prefix }}Block" name="{{ panel.prefix }}_block" class="pf-select" required>
+                                        <option value="">Select block...</option>
+                                    </select>
                                 </div>
                             </div>
                         </div>
@@ -1026,7 +1001,7 @@ function bindCascade(prefix) {
 
             if (responses[2].ok && streetSelect) {
                 var data3 = await responses[2].json();
-                streetSelect.innerHTML = '<option value="">Any street...</option>' +
+                streetSelect.innerHTML = '<option value="">Select street...</option>' +
                     (data3.streets || []).map(function(s) { return '<option value="' + s + '">' + s + '</option>'; }).join('');
             }
         } catch(e) {
@@ -1034,7 +1009,7 @@ function bindCascade(prefix) {
         } finally {
             flatModelSelect.innerHTML = origFlatModelOptions;
             storeyRangeSelect.innerHTML = origStoreyOptions;
-            if (blockSelect) blockSelect.innerHTML = '<option value="">Any block...</option>';
+            if (blockSelect) blockSelect.innerHTML = '<option value="">Select block...</option>';
             endLoad();
         }
     });
@@ -1043,7 +1018,7 @@ function bindCascade(prefix) {
         streetSelect.addEventListener('change', async function() {
             var town = townSelect.value;
             var street = this.value;
-            blockSelect.innerHTML = '<option value="">Any block...</option>';
+            blockSelect.innerHTML = '<option value="">Select block...</option>';
             if (!town || !street) return;
             var token = ++streetToken;
             try {
@@ -1051,7 +1026,7 @@ function bindCascade(prefix) {
                 if (token !== streetToken) return;
                 if (resp.ok) {
                     var data = await resp.json();
-                    blockSelect.innerHTML = '<option value="">Any block...</option>' +
+                    blockSelect.innerHTML = '<option value="">Select block...</option>' +
                         (data.blocks || []).map(function(b) { return '<option value="' + b + '">' + b + '</option>'; }).join('');
                 }
             } catch(e) {}
@@ -1136,14 +1111,6 @@ PANEL_PREFIXES.forEach(function(prefix) {
     bindRange(prefix + 'FloorRange', prefix + 'FloorVal');
     bindRange(prefix + 'LeaseRange', prefix + 'LeaseVal');
     bindCascade(prefix);
-});
-
-PANEL_PREFIXES.forEach(function(prefix) {
-    var btn = document.getElementById('addrToggleBtn_' + prefix);
-    var col = document.getElementById('addrCollapse_' + prefix);
-    if (!btn || !col) return;
-    col.addEventListener('show.bs.collapse', function() { btn.setAttribute('aria-expanded', 'true'); });
-    col.addEventListener('hide.bs.collapse', function() { btn.setAttribute('aria-expanded', 'false'); });
 });
 
 // Add panel button (premium only)
