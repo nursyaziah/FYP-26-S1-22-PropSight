@@ -1235,6 +1235,216 @@
             border: 1px solid rgba(255, 255, 255, 0.05);
         }
 
+        .landing-map-preview-wrap {
+            position: relative;
+            height: 520px;
+            border-radius: 24px;
+            overflow: hidden;
+            border: 1px solid rgba(15, 23, 42, 0.15);
+            background: #0b1120;
+        }
+
+        .landing-map-preview-overlay {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: linear-gradient(180deg, rgba(2, 6, 23, 0.08) 0%, rgba(2, 6, 23, 0.2) 100%);
+        }
+
+        .landing-map-preview-badge {
+            position: absolute;
+            top: 14px;
+            left: 14px;
+            z-index: 3;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            color: #e2e8f0;
+            background: rgba(15, 23, 42, 0.68);
+            border: 1px solid rgba(148, 163, 184, 0.28);
+            backdrop-filter: blur(4px);
+        }
+
+        .landing-predict-card {
+            position: absolute;
+            left: 18px;
+            bottom: 18px;
+            z-index: 3;
+            width: min(320px, calc(100% - 36px));
+            border-radius: 18px;
+            overflow: hidden;
+            border: 1px solid rgba(148, 163, 184, 0.24);
+            box-shadow: 0 14px 40px rgba(2, 6, 23, 0.45);
+            background: #ffffff;
+            animation: landingBlockReveal 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+            pointer-events: none;
+        }
+
+        .landing-predict-card.is-inline {
+            position: relative;
+            left: auto;
+            bottom: auto;
+            width: min(460px, 100%);
+            margin: 0 auto;
+            pointer-events: auto;
+        }
+
+        .landing-predict-preview-shell {
+            border-radius: 24px;
+            padding: 22px;
+            background: linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.98));
+            border: 1px solid rgba(148, 163, 184, 0.16);
+        }
+
+        .landing-predict-hero {
+            position: relative;
+            padding: 16px 16px 14px;
+            background: linear-gradient(145deg, #0f172a 0%, #1e293b 100%);
+            color: #fff;
+            overflow: hidden;
+        }
+
+        .landing-predict-hero::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle at 50% 0%, rgba(37, 99, 235, 0.2), transparent 58%);
+            animation: landingHeroGlow 2.8s ease-in-out infinite;
+        }
+
+        .landing-predict-hero>* {
+            position: relative;
+            z-index: 1;
+        }
+
+        .landing-predict-eyebrow {
+            margin: 0 0 6px 0;
+            font-size: 0.62rem;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            font-weight: 700;
+            color: rgba(191, 219, 254, 0.95);
+        }
+
+        .landing-predict-price {
+            margin: 0;
+            font-family: 'Sora', sans-serif;
+            font-size: 1.45rem;
+            font-weight: 700;
+            letter-spacing: -0.015em;
+            text-shadow: 0 0 14px rgba(59, 130, 246, 0.45);
+            animation: landingPricePulse 2.2s ease-in-out infinite;
+        }
+
+        .landing-predict-confidence {
+            margin-top: 6px;
+            font-size: 0.74rem;
+            color: rgba(226, 232, 240, 0.95);
+        }
+
+        .landing-predict-body {
+            padding: 10px 14px 12px;
+            background: rgba(255, 255, 255, 0.98);
+            border-top: 1px solid rgba(148, 163, 184, 0.2);
+        }
+
+        .landing-predict-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            font-size: 0.74rem;
+            color: #475569;
+            margin-bottom: 8px;
+        }
+
+        .landing-predict-chip {
+            border-radius: 999px;
+            padding: 3px 8px;
+            font-size: 0.66rem;
+            font-weight: 700;
+            color: #1d4ed8;
+            background: rgba(37, 99, 235, 0.1);
+            border: 1px solid rgba(37, 99, 235, 0.2);
+        }
+
+        .landing-typing-ind {
+            display: inline-flex;
+            gap: 4px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            border: 1px solid #e2e8f0;
+            background: #fff;
+        }
+
+        .landing-typing-dot {
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: #94a3b8;
+            animation: landingTypingBounce 1.2s ease-in-out infinite;
+        }
+
+        .landing-typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .landing-typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes landingBlockReveal {
+            from {
+                opacity: 0;
+                transform: translateY(18px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes landingHeroGlow {
+            0%,
+            100% {
+                opacity: 0.45;
+            }
+
+            50% {
+                opacity: 0.9;
+            }
+        }
+
+        @keyframes landingPricePulse {
+            0%,
+            100% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.02);
+            }
+        }
+
+        @keyframes landingTypingBounce {
+            0%,
+            60%,
+            100% {
+                transform: translateY(0);
+                opacity: 0.45;
+            }
+
+            30% {
+                transform: translateY(-4px);
+                opacity: 1;
+            }
+        }
+
         .sg-map-outline {
             position: absolute;
             inset: 40px;
@@ -2039,7 +2249,13 @@
                 <div class="row align-items-center g-5">
                     <div class="col-lg-7 order-2 order-lg-1">
                         <div class="position-relative shadow-lg" style="border-radius: 24px; overflow: hidden;">
-                            <div id="landingRealMap" style="height: 520px; border-radius: 24px; z-index: 1;"></div>
+                            <div class="landing-map-preview-wrap">
+                                <div id="landingRealMap" style="height: 520px; border-radius: 24px; z-index: 1;"></div>
+                                <div class="landing-map-preview-overlay"></div>
+                                <div class="landing-map-preview-badge">
+                                    <i class="bi bi-eye-fill"></i> Preview mode
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -2598,42 +2814,60 @@
             function loadLandingChoropleth(map, data) {
                 if (!Array.isArray(data) || !data.length || !map) return;
                 var vals = data.map(function (d) {
-                    return Number(d.recent_avg || d.avg_price || d.price_bucket || 0);
+                    return Number(d.predicted_price || 0);
                 }).filter(Number.isFinite);
                 if (!vals.length) return;
                 var min = Math.min.apply(null, vals);
                 var max = Math.max.apply(null, vals);
+                if (!window.__landingPreviewLayer) {
+                    window.__landingPreviewLayer = L.layerGroup().addTo(map);
+                }
+                window.__landingPreviewLayer.clearLayers();
                 data.forEach(function (d) {
                     if (!d.lat || !d.lng) return;
-                    var val = Number(d.recent_avg || d.avg_price || d.price_bucket || 0);
+                    var val = Number(d.predicted_price || 0);
                     var color = landingChoroplethColor(val, min, max);
                     var townLabel = escapeLandingLabel(d.town);
+                    var priceLabel = Number.isFinite(val) && val > 0
+                        ? '$' + Math.round(val).toLocaleString()
+                        : 'N/A';
                     L.circle([d.lat, d.lng], {
                         radius: 2000,
                         fillColor: color,
-                        color: 'rgba(255,255,255,0.25)',
-                        weight: 1.5,
-                        fillOpacity: 0.55,
-                        interactive: true
-                    }).addTo(map).bindPopup('<strong>' + townLabel + '</strong>');
+                        color: 'rgba(255,255,255,0.3)',
+                        weight: 1.25,
+                        fillOpacity: 0.56,
+                        interactive: false
+                    }).addTo(window.__landingPreviewLayer);
                     L.marker([d.lat, d.lng], {
                         interactive: false,
                         icon: L.divIcon({
                             className: '',
                             html: '<div style="text-align:center;pointer-events:none;">' +
                                 '<div style="font-size:9px;font-weight:800;color:#fff;text-transform:uppercase;letter-spacing:0.05em;text-shadow:0 0 6px rgba(0,0,0,0.95),0 0 12px rgba(0,0,0,0.8);white-space:nowrap;">' +
-                                townLabel + '</div></div>',
-                            iconSize: [120, 16],
-                            iconAnchor: [60, 8]
+                                townLabel + '</div>' +
+                                '<div style="font-size:10px;font-weight:700;color:#e2e8f0;text-shadow:0 0 6px rgba(0,0,0,0.95),0 0 12px rgba(0,0,0,0.8);white-space:nowrap;">' +
+                                priceLabel + '</div></div>',
+                            iconSize: [140, 28],
+                            iconAnchor: [70, 14]
                         })
-                    }).addTo(map);
+                    }).addTo(window.__landingPreviewLayer);
                 });
             }
 
             if (!window.__landingMap) {
-                window.__landingMap = L.map('landingRealMap', { zoomControl: true }).setView([1.3521, 103.8198], 11);
+                window.__landingMap = L.map('landingRealMap', {
+                    zoomControl: false,
+                    dragging: false,
+                    scrollWheelZoom: false,
+                    doubleClickZoom: false,
+                    boxZoom: false,
+                    keyboard: false,
+                    tap: false,
+                    touchZoom: false
+                }).setView([1.3521, 103.8198], 11);
                 L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                    attribution: '&copy; OpenStreetMap &copy; CARTO',
                     subdomains: 'abcd',
                     maxZoom: 19
                 }).addTo(window.__landingMap);
@@ -2647,7 +2881,7 @@
 
             if (!window.__landingChoroplethRequested) {
                 window.__landingChoroplethRequested = true;
-                fetch('/api/public/location_summary')
+                fetch('/api/predicted_heatmap')
                     .then(function (r) { return r.json(); })
                     .then(function (data) { loadLandingChoropleth(map, data); })
                     .catch(function () { window.__landingChoroplethRequested = false; });
