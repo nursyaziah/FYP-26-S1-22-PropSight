@@ -191,7 +191,7 @@
         <button class="sidebar-link active" onclick="showSection('overview',this)"><span class="ico"><svg viewBox="0 0 24 24"><use href="#ic-calc"></use></svg></span> Dashboard Overview</button>
         <div class="nav-section-label">Operations</div>
         <button class="sidebar-link" onclick="showSection('model',this)"><span class="ico"><svg viewBox="0 0 24 24"><use href="#ic-cpu"></use></svg></span> Model Performance</button>
-        <button class="sidebar-link" onclick="showSection('accounts',this)"><span class="ico"><svg viewBox="0 0 24 24"><use href="#ic-people"></use></svg></span> Manage Accounts <span class="badge-count" id="suspended-count" title="Suspended accounts">0</span></button>
+        <button class="sidebar-link" onclick="showSection('accounts',this)"><span class="ico"><svg viewBox="0 0 24 24"><use href="#ic-people"></use></svg></span> Manage Accounts</button>
         <button class="sidebar-link" onclick="showSection('create-account',this)"><span class="ico"><svg viewBox="0 0 24 24"><use href="#ic-person-add"></use></svg></span> Create Account</button>
         <button class="sidebar-link" onclick="showSection('subscriptions',this)"><span class="ico"><svg viewBox="0 0 24 24"><use href="#ic-trophy"></use></svg></span> Subscription Revenue</button>
         <button class="sidebar-link" onclick="showSection('reviews',this)"><span class="ico"><svg viewBox="0 0 24 24"><use href="#ic-quote"></use></svg></span> User Reviews</button>
@@ -296,14 +296,13 @@
             <div class="col-6 col-md-3"><div class="stat-card"><div class="stat-label">Total Users</div><div class="stat-value" id="stat-total">0</div><div class="stat-sub">All accounts</div></div></div>
             <div class="col-6 col-md-3"><div class="stat-card"><div class="stat-label">Registered Users</div><div class="stat-value" id="stat-registered" style="color:#2563eb">0</div><div class="stat-sub">Standard access</div></div></div>
             <div class="col-6 col-md-3"><div class="stat-card"><div class="stat-label">Premium Users</div><div class="stat-value" id="stat-premium" style="color:#10b981">0</div><div class="stat-sub">Paid users</div></div></div>
-            <div class="col-6 col-md-3"><div class="stat-card"><div class="stat-label">Suspended</div><div class="stat-value" id="stat-suspended" style="color:#ef4444">0</div><div class="stat-sub">Restricted access</div></div></div>
           </div>
           <div class="content-card">
             <div class="card-header-custom"><div><div class="card-title-custom">Manage Accounts</div><div class="card-sub-custom">Combines PropSight account management with the stronger filtering ideas from the other page.</div></div></div>
             <div class="card-body-custom">
               <div class="filter-bar">
                 <div class="search-input-wrap"><span class="ico"><svg viewBox="0 0 24 24"><use href="#ic-search"></use></svg></span><input type="text" class="search-input" id="account-search" placeholder="Search name or email..." oninput="filterAccounts()"></div>
-                <select class="filter-select" id="account-filter" onchange="filterAccounts()" style="max-width:160px"><option value="all">All Status</option><option value="active">Active</option><option value="suspended">Suspended</option><option value="pending">Pending</option></select>
+                <select class="filter-select" id="account-filter" onchange="filterAccounts()" style="max-width:160px"><option value="all">All Status</option><option value="active">Active</option><option value="pending">Pending</option></select>
                 <select class="filter-select" id="role-filter" onchange="filterAccounts()" style="max-width:180px"><option value="all">All Roles</option><option value="Registered User">Registered User</option><option value="Premium User">Premium User</option></select>
                 
               </div>
@@ -431,15 +430,13 @@
     </main>
   </div>
 
-  <div class="modal-overlay" id="suspend-modal"><div class="modal-box"><div style="font-size:1.3rem;font-weight:800;color:var(--primary);margin-bottom:8px;">Suspend Account</div><div style="font-size:.88rem;color:var(--gray);margin-bottom:28px;">This user will lose platform access immediately.</div><p style="font-size:.9rem;color:var(--primary);font-weight:600;margin-bottom:24px;">User: <span id="suspend-user-name" style="color:var(--danger);"></span></p><div style="display:flex;gap:12px;justify-content:flex-end;"><button class="btn-cancel" onclick="closeModal('suspend-modal')">Cancel</button><button class="btn-primary-sm" style="background:var(--danger);" onclick="confirmSuspend()">Suspend</button></div></div></div>
-  <div class="modal-overlay" id="reinstate-modal"><div class="modal-box"><div style="font-size:1.3rem;font-weight:800;color:var(--primary);margin-bottom:8px;">Reinstate Account</div><div style="font-size:.88rem;color:var(--gray);margin-bottom:28px;">Restore full platform access to the user.</div><p style="font-size:.9rem;color:var(--primary);font-weight:600;margin-bottom:24px;">User: <span id="reinstate-user-name" style="color:var(--accent);"></span></p><div style="display:flex;gap:12px;justify-content:flex-end;"><button class="btn-cancel" onclick="closeModal('reinstate-modal')">Cancel</button><button class="btn-primary-sm" onclick="confirmReinstate()">Reinstate</button></div></div></div>
+  <div class="modal-overlay" id="delete-user-modal"><div class="modal-box"><div style="font-size:1.3rem;font-weight:800;color:var(--primary);margin-bottom:8px;">Delete Account</div><div style="font-size:.88rem;color:var(--gray);margin-bottom:28px;">This will permanently delete the user and all their data. This action cannot be undone.</div><p style="font-size:.9rem;color:var(--primary);font-weight:600;margin-bottom:24px;">User: <span id="delete-user-name" style="color:var(--danger);"></span></p><div style="display:flex;gap:12px;justify-content:flex-end;"><button class="btn-cancel" onclick="closeModal('delete-user-modal')">Cancel</button><button class="btn-primary-sm" style="background:var(--danger);" onclick="confirmDeleteUser()">Delete</button></div></div></div>
   <div class="modal-overlay" id="review-text-modal" onclick="if(event.target===this)closeModal('review-text-modal')"><div class="modal-box" style="max-width:640px;"><div style="font-size:1.15rem;font-weight:800;margin-bottom:12px;">Full review text</div><pre id="review-text-modal-body" style="white-space:pre-wrap;word-break:break-word;font-size:.88rem;color:var(--primary);max-height:52vh;overflow:auto;margin:0 0 20px;background:rgba(15,23,42,.04);padding:16px;border-radius:10px;font-family:inherit;"></pre><div style="display:flex;justify-content:flex-end;"><button class="btn-primary-sm" onclick="closeModal('review-text-modal')">Close</button></div></div></div>
 
   <script>
     let accounts = [];
     let charts = {};
-    let suspendTargetId = null;
-    let reinstateTargetId = null;
+    let deleteUserTargetId = null;
     let unreadCount = 3;
     const onlineHistory = [5,6,5,7,6,8,7,6,8,7,9,8];
     let autoRefreshTimer = null;
@@ -509,8 +506,6 @@
         document.getElementById('stat-total').textContent = d.total_users ?? 0;
         document.getElementById('stat-registered').textContent = d.general_users ?? 0;
         document.getElementById('stat-premium').textContent = d.premium_users ?? 0;
-        document.getElementById('stat-suspended').textContent = d.suspended_users ?? 0;
-        document.getElementById('suspended-count').textContent = d.suspended_users ?? 0;
         document.getElementById('sub-premium').textContent = d.premium_users ?? 0;
         document.getElementById('sub-monthly').textContent = '$' + (d.monthly_revenue ?? 0).toFixed(2);
         document.getElementById('sub-weekly').textContent = '$' + (d.weekly_revenue ?? 0).toFixed(2);
@@ -654,7 +649,7 @@
         <td style="font-size:.85rem;font-weight:600;">${a.predictions??0}</td>
         <td><span class="status-badge ${a.status==='active'?'badge-active':a.status==='suspended'?'badge-suspended':'badge-pending'}">${(a.status||'active').charAt(0).toUpperCase()+(a.status||'active').slice(1)}</span></td>
         <td style="display:flex;gap:6px;flex-wrap:wrap;">
-          ${a.status!=='suspended'?`<button class="btn-action danger" onclick="openSuspend('${a.id}','${a.name}','${a.email}')">Suspend</button>`:`<button class="btn-action success" onclick="openReinstate('${a.id}','${a.name}','${a.email}')">Reinstate</button>`}
+          <button class="btn-action danger" onclick="openDeleteUser('${a.id}','${a.name}','${a.email}')">Delete</button>
           ${a.role!=='Premium User'?`<button class="btn-action success" onclick="upgradeUser('${a.id}','${a.name}')">Upgrade</button>`:`<button class="btn-action danger" onclick="downgradeUser('${a.id}','${a.name}')">Downgrade</button>`}
         </td></tr>`).join('');
     }
@@ -884,15 +879,10 @@
       try { await fetchJson('/api/admin/users/'+id+'/downgrade',{method:'POST'}); showToast(name+' downgraded to General.','success'); loadAccounts(); loadStats(); }
       catch(e){ showToast('Downgrade failed.','error'); }
     }
-    function openSuspend(id,name,email){ suspendTargetId=id; document.getElementById('suspend-user-name').textContent=name+' ('+email+')'; document.getElementById('suspend-modal').classList.add('open'); }
-    async function confirmSuspend(){
-      try { await fetchJson('/api/admin/users/'+suspendTargetId+'/suspend',{method:'POST'}); closeModal('suspend-modal'); showToast('Account suspended.','error'); loadAccounts(); loadStats(); }
-      catch(e){ showToast(e.message || 'Suspend failed.','error'); }
-    }
-    function openReinstate(id,name,email){ reinstateTargetId=id; document.getElementById('reinstate-user-name').textContent=name+' ('+email+')'; document.getElementById('reinstate-modal').classList.add('open'); }
-    async function confirmReinstate(){
-      try { await fetchJson('/api/admin/users/'+reinstateTargetId+'/reinstate',{method:'POST'}); closeModal('reinstate-modal'); showToast('Account reinstated.','success'); loadAccounts(); loadStats(); }
-      catch(e){ showToast(e.message || 'Reinstate failed.','error'); }
+    function openDeleteUser(id,name,email){ deleteUserTargetId=id; document.getElementById('delete-user-name').textContent=name+' ('+email+')'; document.getElementById('delete-user-modal').classList.add('open'); }
+    async function confirmDeleteUser(){
+      try { await fetchJson('/api/admin/users/'+deleteUserTargetId+'/delete',{method:'POST'}); closeModal('delete-user-modal'); showToast('User deleted.','error'); loadAccounts(); loadStats(); }
+      catch(e){ showToast(e.message || 'Delete failed.','error'); }
     }
     function closeModal(id){ document.getElementById(id).classList.remove('open'); }
 
