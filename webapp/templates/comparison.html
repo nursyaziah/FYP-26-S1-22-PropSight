@@ -1286,14 +1286,18 @@ if (IS_PREMIUM && HAS_RESULTS && PAYLOADS.length >= 2) {
         .then(function(data) {
             if (data.error) {
                 var isOutage = /unavailable|generation failed|not configured|AI error/i.test(String(data.error || ''));
-                aiContent.innerHTML = isOutage
+                aiContent.innerHTML = data.error === 'limit_reached'
+                    ? '<div class="text-muted small">Today\'s comparison AI limit has been reached. The ranked factors above are still available.</div>'
+                    : isOutage
                     ? buildComparisonAiFallback()
                     : '<div class="text-muted small">' + escapeComparisonText(data.error) + '</div>';
                 return;
             }
             var html = '';
             (data.panels || []).forEach(function(p) {
-                html += '<div class="mb-2"><strong class="text-primary">Panel ' + p.label + ':</strong> ' + p.why_price + '</div>';
+                html += '<div class="mb-2"><strong class="text-primary">Panel ' +
+                    escapeComparisonText(p.label) + ':</strong> ' +
+                    escapeComparisonText(p.why_price) + '</div>';
             });
             if (!html) {
                 html = '<div class="text-muted small">No AI explanations available.</div>';

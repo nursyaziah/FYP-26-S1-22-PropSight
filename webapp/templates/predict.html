@@ -714,6 +714,12 @@ body > nav, body > footer, body > header {
   border: 1px solid #e2e8f0;
   border-radius: 16px 16px 16px 4px;
 }
+.cbubble.ai a {
+  color: #2563eb;
+  font-weight: 700;
+  text-decoration: none;
+}
+.cbubble.ai a:hover { text-decoration: underline; }
 .cbubble.ai-err {
   background: rgba(239,68,68,0.05);
   border-color: rgba(239,68,68,0.2);
@@ -1786,6 +1792,159 @@ if (pForm && subBtn) {
   var ctx    = JSON.parse(ctxEl.textContent || '{}');
   var isPrem = {{ 'true' if is_premium else 'false' }};
   var busy   = false;
+  var analyticsBaseUrl = {{ url_for('analytics') | tojson }};
+  var comparisonBaseUrl = {{ url_for('comparison') | tojson }};
+
+  function setParamIfValue(params, key, value) {
+    if (value === null || value === undefined || value === '') return;
+    params.set(key, String(value));
+  }
+
+  function buildPredictionAnalyticsLink(focus, scope) {
+    var params = new URLSearchParams();
+    [
+      ['town', ctx.town],
+      ['flat_type', ctx.flat_type],
+      ['flat_model', ctx.flat_model],
+      ['floor_area', ctx.floor_area],
+      ['storey_range', ctx.storey_range],
+      ['lease_commence', ctx.lease_commence],
+      ['predicted_price', ctx.predicted_price],
+      ['price_low', ctx.price_low],
+      ['price_high', ctx.price_high],
+    ].forEach(function(pair) {
+      setParamIfValue(params, pair[0], pair[1]);
+    });
+    if (scope !== 'town_area') {
+      setParamIfValue(params, 'street_name', ctx.street_name);
+      setParamIfValue(params, 'block', ctx.block);
+    }
+    setParamIfValue(params, 'focus', focus);
+    return analyticsBaseUrl + (params.toString() ? ('?' + params.toString()) : '');
+  }
+
+  function buildPredictionComparisonLink() {
+    var params = new URLSearchParams();
+    params.set('panel_count', '2');
+    [
+      ['p0_town', ctx.town],
+      ['p0_flat_type', ctx.flat_type],
+      ['p0_flat_model', ctx.flat_model],
+      ['p0_floor_area', ctx.floor_area],
+      ['p0_storey_range', ctx.storey_range],
+      ['p0_lease_commence', ctx.lease_commence],
+      ['p0_street_name', ctx.street_name],
+      ['p0_block', ctx.block],
+    ].forEach(function(pair) {
+      setParamIfValue(params, pair[0], pair[1]);
+    });
+    return comparisonBaseUrl + '?' + params.toString();
+  }
+
+  function containsAny(text, terms) {
+    text = String(text || '').toLowerCase();
+    return terms.some(function(term) { return text.indexOf(term) !== -1; });
+  }
+
+  function markdownLinkFirst(text, pattern, href) {
+    if (!text || text.indexOf(href) !== -1) return text;
+    return text.replace(pattern, function() {
+      var match = arguments[0];
+      var offset = arguments[arguments.length - 2];
+      var fullText = arguments[arguments.length - 1];
+      var prev = fullText.charAt(offset - 1);
+      var before = fullText.slice(Math.max(0, offset - 2), offset);
+      if (prev === '[' || before === '](') return match;
+      return '[' + match + '](' + href + ')';
+    });
+  }
+
+  function withPredictionResourceLinks(question, answer) {
+    var text = String(answer || '').trim();
+    if (!text) return text;
+
+    var combined = (String(question || '') + ' ' + text).toLowerCase();
+    var resources = [
+      {
+        key: 'area',
+        href: buildPredictionAnalyticsLink('area', 'town_area'),
+        label: (ctx.town || '').trim() ? 'Open Area Comparison within ' + (ctx.town || '').trim() : 'Open Area Comparison',
+        pattern: /\b(Area Comparison|within-town comparison|within town comparison|areas? (?:inside|within|in) (?:the )?town|east vs west|west vs east)\b/i,
+        triggers: ['area comparison', 'within town', 'inside the town', 'areas in the town', 'east vs west', 'west vs east', 'tampines east', 'tampines west']
+      },
+      {
+        key: 'district',
+        href: buildPredictionAnalyticsLink('district'),
+        label: (ctx.town || '').trim() ? 'Open District Comparison for ' + (ctx.town || '').trim() : 'Open District Comparison',
+        pattern: /\b(District Comparison|Town Benchmark|town-level context|town level context|nearby towns|other towns)\b/i,
+        triggers: ['nearby', 'district', 'town average', 'nearby town', 'other town', 'district comparison', 'town-level', 'town level']
+      },
+      {
+        key: 'lease',
+        href: buildPredictionAnalyticsLink('lease'),
+        label: 'Open Lease Decay chart',
+        pattern: /\b(Lease Decay(?: chart)?|remaining lease chart|lease decay analysis)\b/i,
+        triggers: ['lease decay', 'remaining lease', 'cpf', 'bank loan', 'buyer eligibility', 'lease concern']
+      },
+      {
+        key: 'trend',
+        href: buildPredictionAnalyticsLink('trend'),
+        label: 'Open Price Trend chart',
+        pattern: /\b(Price Trend(?: chart)?|historical price trend|price trend view)\b/i,
+        triggers: ['price trend', 'historical', 'prices changing', 'market trend']
+      },
+      {
+        key: 'forecast',
+        href: buildPredictionAnalyticsLink('forecast'),
+        label: 'Open 5-Year Forecast',
+        pattern: /\b(5-Year Price Forecast|5-year forecast|Forecast chart|Projection Table)\b/i,
+        triggers: ['future resale', 'future value', 'forecast', 'over time', 'next year']
+      },
+      {
+        key: 'flattype',
+        href: buildPredictionAnalyticsLink('flattype'),
+        label: 'Open Flat Type Distribution',
+        pattern: /\b(Flat Type Distribution|flat type mix|flat type breakdown)\b/i,
+        triggers: ['flat type mix', 'flat type distribution', 'flat type breakdown']
+      },
+      {
+        key: 'volume',
+        href: buildPredictionAnalyticsLink('volume'),
+        label: 'Open Transaction Volume chart',
+        pattern: /\b(Transaction Volume(?: by Year)?|volume chart|Market Activity chart)\b/i,
+        triggers: ['transaction volume', 'sales volume', 'buyer activity', 'market activity', 'sample size']
+      },
+      {
+        key: 'myflat',
+        href: buildPredictionAnalyticsLink('myflat'),
+        label: 'Open My Flat context',
+        pattern: /\b(My Flat|Market Position|Recent Similar Transactions|comparable transactions|comparable sales)\b/i,
+        triggers: ['my flat', 'market position', 'comparable transactions', 'comparable sales', 'similar transactions']
+      },
+      {
+        key: 'compare',
+        href: buildPredictionComparisonLink(),
+        label: 'Open Compare tool',
+        pattern: /\b(Compare tool|comparison tool|Compare with another flat)\b/i,
+        triggers: ['compare tool', 'comparison tool', 'compare with another flat']
+      }
+    ];
+
+    var appended = [];
+    resources.forEach(function(resource) {
+      var before = text;
+      text = markdownLinkFirst(text, resource.pattern, resource.href);
+      var alreadyLinked = before !== text || text.indexOf(resource.href) !== -1;
+      if (!alreadyLinked && containsAny(combined, resource.triggers)) {
+        appended.push('[' + resource.label + '](' + resource.href + ')');
+      }
+    });
+
+    if (appended.length) {
+      text += '\n\n' + appended.slice(0, 2).join(' · ');
+    }
+    return text;
+  }
 
   function renderAiMarkdown(text) {
     if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
@@ -1803,15 +1962,14 @@ if (pForm && subBtn) {
 
   function buildAiFallbackHtml() {
     var town = (ctx.town || '').trim();
-    var townQ = town ? ('?town=' + encodeURIComponent(town)) : '';
-    var leaseLink   = '/analytics' + townQ + (townQ ? '&' : '?') + 'section=lease';
-    var compareLink = '/comparison';
+    var leaseLink   = buildPredictionAnalyticsLink('lease');
+    var districtLink = buildPredictionAnalyticsLink('district');
     var savedLink   = '/my_predictions';
 
     var items = [
-      { href: leaseLink,   icon: 'bi-hourglass-split', label: 'Lease decay chart' },
-      { href: compareLink, icon: 'bi-columns-gap',      label: 'Compare with another flat' },
-      { href: savedLink,   icon: 'bi-bookmark-star',    label: 'My saved predictions' },
+      { href: leaseLink,    icon: 'bi-hourglass-split', label: 'Lease decay chart' },
+      { href: districtLink, icon: 'bi-buildings',        label: town ? ('District comparison for ' + town) : 'District comparison' },
+      { href: savedLink,    icon: 'bi-bookmark-star',    label: 'My saved predictions' },
     ];
     var linksHtml = items.map(function(i) {
       return '<a href="' + i.href + '" class="ai-fallback-link"><i class="bi ' + i.icon + '"></i>' + i.label + '</a>';
@@ -1827,6 +1985,7 @@ if (pForm && subBtn) {
   var hist   = [];  /* premium multi-turn history */
 
   var apiCtx = {
+    surface: 'prediction',
     filters: { town: ctx.town||'', flat_type: ctx.flat_type||'', street_name: ctx.street_name||'', block: ctx.block||'' },
     chart_data: {
       predicted_price: ctx.predicted_price,
@@ -1840,6 +1999,17 @@ if (pForm && subBtn) {
       mape: ctx.mape,
       narrative: ctx.narrative || null,
       shap_features: ctx.shap_features || []
+    },
+    my_flat: {
+      town: ctx.town || '',
+      flat_type: ctx.flat_type || '',
+      flat_model: ctx.flat_model || '',
+      floor_area: ctx.floor_area,
+      storey_range: ctx.storey_range || '',
+      lease_commence: ctx.lease_commence,
+      street_name: ctx.street_name || '',
+      block: ctx.block || '',
+      predicted_price: ctx.predicted_price
     }
   };
 
@@ -1940,8 +2110,8 @@ if (pForm && subBtn) {
     try {
       var endpoint = isPrem ? '/api/ai_chat' : '/api/ai_answer';
       var body = isPrem
-        ? { message: q, history: hist, context: apiCtx }
-        : { question: q, context: apiCtx };
+        ? { message: q, history: hist, surface: 'prediction', context: apiCtx }
+        : { question: q, surface: 'prediction', context: apiCtx };
 
       var resp = await fetch(endpoint, {
         method: 'POST',
@@ -1955,7 +2125,7 @@ if (pForm && subBtn) {
         var err = {};
         try { err = await resp.json(); } catch(x){}
         if (err.error === 'limit_reached') {
-          appendBubble('ai', "You've used all your AI answers for today. Upgrade to Premium for unlimited questions.", true);
+          appendBubble('ai', "You've reached today's AI chat limit. Try again tomorrow.", true);
         } else {
           appendBubble('ai', buildAiFallbackHtml(), false, true);
         }
@@ -1964,13 +2134,14 @@ if (pForm && subBtn) {
 
       var data = await resp.json();
       var ans = (data.answer || data.reply || data.response || '').trim();
+      var displayAns = withPredictionResourceLinks(q, ans);
 
       if (isPrem && ans) {
         hist.push({ role: 'user',  text: q });
         hist.push({ role: 'model', text: ans });
       }
 
-      appendBubble('ai', ans || 'No response received.', false, false, Boolean(ans));
+      appendBubble('ai', displayAns || 'No response received.', false, false, Boolean(ans));
       appendFollowUps();
 
       if (!isPrem && data.remaining != null && limitEl) {
@@ -2028,7 +2199,7 @@ if (pForm && subBtn) {
 
   var FU_POOLS = [
     ['What about future resale value?', 'How does this compare to nearby towns?'],
-    ['Which factor has the biggest impact?', 'Is now a good time to sell?'],
+    ['Which factor has the biggest impact?', 'What should I review next?'],
     ['How reliable is this estimate?', 'What makes this area desirable?'],
     ['How does floor level affect price?', 'What does "remaining lease" mean for buyers?'],
     ['How does my flat compare to the town average?', 'What drives HDB prices in Singapore?']

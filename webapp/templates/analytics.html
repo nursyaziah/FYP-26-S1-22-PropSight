@@ -751,6 +751,25 @@
     .flat-type-name { font-weight: 600; color: #1e293b; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .flat-type-pct  { font-weight: 700; color: #2563eb; }
     .flat-type-avg  { color: #94a3b8; font-size: 0.7rem; white-space: nowrap; }
+    .flat-type-mini-card.is-selected {
+        border-color: rgba(37, 99, 235, 0.45);
+        background: rgba(37, 99, 235, 0.06);
+    }
+    .homeowner-note {
+        margin-top: 0.65rem;
+        padding: 0.65rem 0.75rem;
+        border-radius: 8px;
+        border: 1px solid rgba(37, 99, 235, 0.18);
+        background: rgba(37, 99, 235, 0.045);
+        color: #334155;
+        font-size: 0.8rem;
+        line-height: 1.5;
+    }
+    .homeowner-note.warning {
+        border-color: rgba(245, 158, 11, 0.34);
+        background: rgba(245, 158, 11, 0.08);
+    }
+    .homeowner-note strong { color: #0f172a; }
 
     /* Empty / placeholder states */
     .section-empty {
@@ -1317,8 +1336,12 @@
                     <i class="bi bi-pie-chart"></i>
                     <span>Flat Type Mix</span>
                 </div>
-                <div class="nav-pill-item" data-section="district">
+                <div class="nav-pill-item" data-section="area">
                     <i class="bi bi-buildings"></i>
+                    <span>Area Comparison</span>
+                </div>
+                <div class="nav-pill-item" data-section="district">
+                    <i class="bi bi-globe-asia-australia"></i>
                     <span>District Comparison</span>
                 </div>
                 <div class="nav-pill-item" data-section="volume">
@@ -1505,6 +1528,7 @@
                             <p class="text-muted mb-0" style="font-size:0.84rem;">Choose a town to narrow the analytics scope. Use the filters above to drill into a specific street or block.</p>
                         </div>
                         <div class="chart-container"><canvas id="priceTrendChart"></canvas></div>
+                        <div id="trendSampleWarning" class="homeowner-note warning d-none"></div>
                     </div>
                 </div>
             </div>
@@ -1544,6 +1568,7 @@
                                         <i class="bi bi-table me-2 text-primary"></i>Projection Table
                                     </h5>
                                     <p class="chart-note mb-2">Confidence band and remaining lease per forecast year.</p>
+                                    <div id="futurePredDelta" class="homeowner-note d-none"></div>
                                     <div class="table-responsive">
                                         <table class="table table-sm table-hover forecast-table mb-0 small">
                                             <thead>
@@ -1587,6 +1612,39 @@
                                         Apply filters to see flat type breakdown.
                                     </div>
                                 </div>
+                                <div id="flatTypePersonalNote" class="homeowner-note d-none"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PANEL: Area Comparison -->
+            <div id="section-area" class="section-panel">
+                <div class="row g-3">
+                    <div class="col-lg-6">
+                        <div class="card panel-card h-100">
+                            <div class="card-body">
+                                <div class="section-kicker">Within-Town Benchmarking</div>
+                                <h5 id="areaComparisonTitle" class="mb-1" style="font-size:1.05rem; font-weight:700;">
+                                    <i class="bi bi-signpost-split me-2 text-primary"></i>Area Comparison
+                                </h5>
+                                <p id="areaComparisonSubtitle" class="chart-note">Select a town to compare streets as the available area unit.</p>
+                                <div style="height:420px;"><canvas id="areaChart"></canvas></div>
+                                <div id="areaRankNote" class="homeowner-note d-none"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-6">
+                        <div class="card panel-card h-100">
+                            <div class="card-body">
+                                <div class="section-kicker">Within-Town Value Density</div>
+                                <h5 id="areaPsfTitle" class="mb-1" style="font-size:1.05rem; font-weight:700;">
+                                    <i class="bi bi-cash-stack me-2 text-primary"></i>Area Price per sqm
+                                </h5>
+                                <p id="areaPsfSubtitle" class="chart-note">Street-level price density inside the selected town.</p>
+                                <div style="height:420px;"><canvas id="areaPsfChart"></canvas></div>
+                                <div id="areaPsfRankNote" class="homeowner-note d-none"></div>
                             </div>
                         </div>
                     </div>
@@ -1601,10 +1659,11 @@
                             <div class="card-body">
                                 <div class="section-kicker">Benchmarking</div>
                                 <h5 id="locationComparisonTitle" class="mb-1" style="font-size:1.05rem; font-weight:700;">
-                                    <i class="bi bi-buildings me-2 text-primary"></i>Town Benchmark
+                                    <i class="bi bi-globe-asia-australia me-2 text-primary"></i>District Comparison
                                 </h5>
-                                <p id="locationComparisonSubtitle" class="chart-note">Compare broader town performance side by side.</p>
+                                <p id="locationComparisonSubtitle" class="chart-note">Compare town-level performance side by side.</p>
                                 <div style="height:420px;"><canvas id="districtChart"></canvas></div>
+                                <div id="districtRankNote" class="homeowner-note d-none"></div>
                             </div>
                         </div>
                     </div>
@@ -1613,10 +1672,11 @@
                             <div class="card-body">
                                 <div class="section-kicker">Value Density</div>
                                 <h5 id="psfTitle" class="mb-1" style="font-size:1.05rem; font-weight:700;">
-                                    <i class="bi bi-cash-stack me-2 text-primary"></i>Price per sqm
+                                    <i class="bi bi-cash-stack me-2 text-primary"></i>District Price per sqm
                                 </h5>
-                                <p id="psfSubtitle" class="chart-note">Average price per square metre for the current benchmark set.</p>
+                                <p id="psfSubtitle" class="chart-note">Average town-level price per square metre for the current benchmark set.</p>
                                 <div style="height:420px;"><canvas id="psfChart"></canvas></div>
+                                <div id="psfRankNote" class="homeowner-note d-none"></div>
                             </div>
                         </div>
                     </div>
@@ -1633,6 +1693,7 @@
                         </h5>
                         <p class="chart-note">Uses the same scope as the Price Trend chart so volume and prices stay aligned.</p>
                         <div class="chart-container-tall"><canvas id="volumeChart"></canvas></div>
+                        <div id="volumeSampleWarning" class="homeowner-note warning d-none"></div>
                     </div>
                 </div>
             </div>
@@ -1659,6 +1720,7 @@
                                 <i class="bi bi-hourglass-split me-2 text-primary"></i>Lease Decay Effect on Price
                             </h5>
                             <p class="chart-note">How remaining lease years correlate with resale prices in your area.</p>
+                            <div id="leasePositionNote" class="homeowner-note d-none"></div>
                             <div class="chart-container-tall"><canvas id="leaseDecayChart"></canvas></div>
                         </div>
                     </div>
@@ -1760,9 +1822,9 @@
     <!-- ④ PREDICTION INSIGHTS (shown when launched from Predict page) ───── -->
     <!-- ⑤ AI FAQ SECTIONS ───────────────────────────────────────────────── -->
     <div class="faq-section mt-4{% if not is_premium %} ai-locked-wrap{% endif %}">
-        <div class="section-kicker mb-1">AI-Powered Questions</div>
+        <div class="section-kicker mb-1">Suggested Questions</div>
         <h5 class="mb-3">
-            <i class="bi bi-stars me-2 text-primary"></i>Insights About Your Data
+            <i class="bi bi-patch-question me-2 text-primary"></i>Useful Questions About Your Data
         </h5>
         <div class="row g-3{% if not is_premium %} ai-locked-blur{% endif %}">
             <!-- Value FAQ -->
@@ -1774,7 +1836,7 @@
                         </div>
                         <h6 class="mb-2 fw-700">Value Trends</h6>
                         <div id="aiFaqValue" class="ai-faq-list">
-                            <div class="text-muted" style="font-size:0.83rem;">Apply filters to generate AI insights.</div>
+                            <div class="text-muted" style="font-size:0.83rem;">Apply filters to generate suggested questions.</div>
                         </div>
                     </div>
                 </div>
@@ -1788,7 +1850,7 @@
                         </div>
                         <h6 class="mb-2 fw-700">Area Demand</h6>
                         <div id="aiFaqDemand" class="ai-faq-list">
-                            <div class="text-muted" style="font-size:0.83rem;">Apply filters to generate AI insights.</div>
+                            <div class="text-muted" style="font-size:0.83rem;">Apply filters to generate suggested questions.</div>
                         </div>
                     </div>
                 </div>
@@ -1802,7 +1864,7 @@
                         </div>
                         <h6 class="mb-2 fw-700">How You Compare</h6>
                         <div id="aiFaqPosition" class="ai-faq-list">
-                            <div class="text-muted" style="font-size:0.83rem;">Apply filters to generate AI insights.</div>
+                            <div class="text-muted" style="font-size:0.83rem;">Apply filters to generate suggested questions.</div>
                         </div>
                     </div>
                 </div>
@@ -1816,7 +1878,7 @@
                         </div>
                         <h6 class="mb-2 fw-700">Remaining Lease</h6>
                         <div id="aiFaqLease" class="ai-faq-list">
-                            <div class="text-muted" style="font-size:0.83rem;">Apply filters to generate AI insights.</div>
+                            <div class="text-muted" style="font-size:0.83rem;">Apply filters to generate suggested questions.</div>
                         </div>
                     </div>
                 </div>
@@ -1873,7 +1935,7 @@
         </div>
         <div id="aiChatMessages" class="ai-chat-messages">
             <div class="ai-chat-bubble ai-chat-bot">
-                Ask about the data on this page — I can see all the charts, filters, and numbers. I'm best at explaining what the trends mean for homeowners like you.
+                Ask about the data on this page — I use the filters, chart data, and numbers here to explain what the trends mean for homeowners like you.
             </div>
         </div>
         <div id="aiChatSuggestions" class="ai-chat-suggestions"></div>
@@ -1894,6 +1956,8 @@
 /* ── Chart instances ──────────────────────────────────────────────────────── */
 let priceTrendChart;
 let flatTypeChart;
+let areaChart;
+let areaPsfChart;
 let districtChart;
 let volumeChart;
 let psfChart;
@@ -1905,6 +1969,8 @@ let latestLeaseDecayData = [];
 let latestPredictionRecentTransactions = [];
 let latestPredictionContextMeta = { scope_broadened: false };
 let latestComparisonMeta = { rows: [], labelField: 'town' };
+let latestAreaComparisonMeta = { rows: [], labelField: 'street_name' };
+let latestDistrictComparisonMeta = { rows: [], labelField: 'town' };
 let activeInsightSection = 'trend';
 
 /* ── AI FAQ state ─────────────────────────────────────────────────────────── */
@@ -1918,10 +1984,16 @@ let latestVolumeData = [];
 let latestFlatTypeData = [];
 let latestBenchmarkData = [];
 let latestPsfData = [];
+let latestAreaBenchmarkData = [];
+let latestAreaPsfData = [];
+let latestDistrictBenchmarkData = [];
+let latestDistrictPsfData = [];
 let hasAppliedYearParams = false;
 
 /* ── URL seed (from Predict page redirect) ────────────────────────────────── */
 const pageParams = new URLSearchParams(window.location.search);
+const analyticsBaseUrl = {{ url_for('analytics') | tojson }};
+const comparisonBaseUrl = {{ url_for('comparison') | tojson }};
 const serverPredictionSeed = {{ prediction_seed | tojson }};
 const predictionFormSeed = {{ prediction_form_data | tojson }};
 const predictionSeed = {
@@ -1984,7 +2056,7 @@ function renderAiMarkdown(text) {
     });
 }
 
-const AI_GENERATED_DISCLAIMER_TEXT = 'AI-generated explanation based on the prediction. May contain errors.';
+const AI_GENERATED_DISCLAIMER_TEXT = 'AI-generated explanation based on the available data. May contain errors.';
 
 function buildAiGeneratedDisclaimerHtml() {
     return '<div class="ai-generated-disclaimer">' + AI_GENERATED_DISCLAIMER_TEXT + '</div>';
@@ -2149,6 +2221,146 @@ function buildFilterParams() {
     if (filters.street_name) params.set('street_name', filters.street_name);
     if (filters.block)       params.set('block', filters.block);
     return params;
+}
+
+function setParamIfValue(params, key, value) {
+    if (value === null || value === undefined || value === '') return;
+    params.set(key, String(value));
+}
+
+function buildAnalyticsSectionLink(section, scope) {
+    const params = buildFilterParams();
+    [
+        ['flat_model', predictionSeed.flat_model],
+        ['floor_area', predictionSeed.floor_area],
+        ['storey_range', predictionSeed.storey_range],
+        ['lease_commence', predictionSeed.lease_commence],
+        ['predicted_price', predictionSeed.predicted_price],
+        ['price_low', predictionSeed.price_low],
+        ['price_high', predictionSeed.price_high],
+    ].forEach(pair => setParamIfValue(params, pair[0], pair[1]));
+    if (!params.get('town')) setParamIfValue(params, 'town', predictionSeed.town);
+    if (!params.get('flat_type')) setParamIfValue(params, 'flat_type', predictionSeed.flat_type);
+    if (scope === 'town_area') {
+        params.delete('street_name');
+        params.delete('block');
+    } else {
+        if (!params.get('street_name')) setParamIfValue(params, 'street_name', predictionSeed.street_name);
+        if (!params.get('block')) setParamIfValue(params, 'block', predictionSeed.block);
+    }
+    setParamIfValue(params, 'focus', section);
+    return analyticsBaseUrl + (params.toString() ? ('?' + params.toString()) : '');
+}
+
+function buildAnalyticsComparisonLink() {
+    const filters = getFilters();
+    const params = new URLSearchParams();
+    params.set('panel_count', '2');
+    [
+        ['p0_town', predictionSeed.town || filters.town],
+        ['p0_flat_type', predictionSeed.flat_type || filters.flat_type],
+        ['p0_flat_model', predictionSeed.flat_model],
+        ['p0_floor_area', predictionSeed.floor_area],
+        ['p0_storey_range', predictionSeed.storey_range],
+        ['p0_lease_commence', predictionSeed.lease_commence],
+        ['p0_street_name', predictionSeed.street_name || filters.street_name],
+        ['p0_block', predictionSeed.block || filters.block],
+    ].forEach(pair => setParamIfValue(params, pair[0], pair[1]));
+    return comparisonBaseUrl + '?' + params.toString();
+}
+
+function containsAny(text, terms) {
+    text = String(text || '').toLowerCase();
+    return terms.some(term => text.indexOf(term) !== -1);
+}
+
+function markdownLinkFirst(text, pattern, href) {
+    if (!text || text.indexOf(href) !== -1) return text;
+    return text.replace(pattern, function() {
+        const match = arguments[0];
+        const offset = arguments[arguments.length - 2];
+        const fullText = arguments[arguments.length - 1];
+        const prev = fullText.charAt(offset - 1);
+        const before = fullText.slice(Math.max(0, offset - 2), offset);
+        if (prev === '[' || before === '](') return match;
+        return '[' + match + '](' + href + ')';
+    });
+}
+
+function withAnalyticsResourceLinks(question, answer) {
+    let text = String(answer || '').trim();
+    if (!text) return text;
+    const combined = (String(question || '') + ' ' + text).toLowerCase();
+    const resources = [
+        {
+            href: buildAnalyticsSectionLink('trend'),
+            label: 'Open Price Trend chart',
+            pattern: /\b(Price Trend(?: chart)?|historical price trend|price trend view)\b/i,
+            triggers: ['price trend', 'historical price', 'appreciated', 'price movement']
+        },
+        {
+            href: buildAnalyticsSectionLink('area', 'town_area'),
+            label: 'Open Area Comparison within this town',
+            pattern: /\b(Area Comparison|within-town comparison|within town comparison|areas? (?:inside|within|in) (?:the )?town|east vs west|west vs east)\b/i,
+            triggers: ['area comparison', 'within town', 'inside the town', 'areas in the town', 'east vs west', 'west vs east', 'tampines east', 'tampines west']
+        },
+        {
+            href: buildAnalyticsSectionLink('district'),
+            label: 'Open District Comparison',
+            pattern: /\b(District Comparison|Town Benchmark|town ranking|town rankings|town-level context|town level context|nearby towns|other towns)\b/i,
+            triggers: ['district comparison', 'town rank', 'town ranking', 'ranked', 'nearby towns', 'other towns']
+        },
+        {
+            href: buildAnalyticsSectionLink('flattype'),
+            label: 'Open Flat Type Distribution',
+            pattern: /\b(Flat Type Distribution|flat type mix|flat type breakdown|flat types)\b/i,
+            triggers: ['flat type', '5-room', '5 room', 'perform compared', 'different flat']
+        },
+        {
+            href: buildAnalyticsSectionLink('volume'),
+            label: 'Open Transaction Volume chart',
+            pattern: /\b(Transaction Volume(?: by Year)?|volume chart|Market Activity|transaction trends|buyer activity)\b/i,
+            triggers: ['transaction count', 'transaction counts', 'buyer activity', 'sales activity', 'volume', 'sample size']
+        },
+        {
+            href: buildAnalyticsSectionLink('lease'),
+            label: 'Open Lease Decay chart',
+            pattern: /\b(Lease Decay(?: chart)?|remaining lease chart|lease decay analysis)\b/i,
+            triggers: ['lease decay', 'remaining lease', 'cpf', 'bank loan', 'buyer eligibility']
+        },
+        {
+            href: buildAnalyticsSectionLink('forecast'),
+            label: 'Open 5-Year Forecast',
+            pattern: /\b(5-Year Price Forecast|5-year forecast|Forecast chart|Projection Table)\b/i,
+            triggers: ['future resale', 'future value', 'forecast', 'next year', 'over time']
+        },
+        {
+            href: buildAnalyticsSectionLink('myflat'),
+            label: 'Open My Flat context',
+            pattern: /\b(My Flat|Market Position|Recent Similar Transactions|comparable transactions|comparable sales)\b/i,
+            triggers: ['my flat', 'market position', 'comparable transactions', 'comparable sales', 'similar flats']
+        },
+        {
+            href: buildAnalyticsComparisonLink(),
+            label: 'Open Compare tool',
+            pattern: /\b(Compare tool|comparison tool|Compare with another flat)\b/i,
+            triggers: ['compare tool', 'comparison tool', 'benchmark against', 'compare your']
+        }
+    ];
+
+    const appended = [];
+    resources.forEach(resource => {
+        const before = text;
+        text = markdownLinkFirst(text, resource.pattern, resource.href);
+        const alreadyLinked = before !== text || text.indexOf(resource.href) !== -1;
+        if (!alreadyLinked && containsAny(combined, resource.triggers)) {
+            appended.push('[' + resource.label + '](' + resource.href + ')');
+        }
+    });
+    if (appended.length) {
+        text += '\n\n' + appended.slice(0, 2).join(' · ');
+    }
+    return text;
 }
 
 function buildFuturePredictionParams() {
@@ -2597,11 +2809,16 @@ function switchSection(sectionId) {
     renderActiveRailInsight();
     // Trigger chart resize after panel becomes visible
     setTimeout(async () => {
-        [priceTrendChart, flatTypeChart, districtChart, volumeChart, psfChart, futurePredChart].forEach(c => {
+        [priceTrendChart, flatTypeChart, areaChart, areaPsfChart, districtChart, volumeChart, psfChart, futurePredChart].forEach(c => {
             if (c) { try { c.resize(); } catch(e) {} }
         });
+        if (sectionId === 'area') {
+            await loadAreaComparison();
+            await loadAreaPSF();
+            renderActiveRailInsight();
+        }
         if (sectionId === 'district') {
-            await loadLocationComparison();
+            await loadDistrictComparison();
             await loadPSF();
             renderActiveRailInsight();
         }
@@ -2635,6 +2852,51 @@ function setChangeIndicator(textId, arrowId, pct) {
         textEl.className = 'kpi-delta-val text-muted';
         if (arrowEl) arrowEl.className = 'bi bi-dash text-muted';
     }
+}
+
+function setHomeownerNote(id, html, isWarning) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (!html) {
+        el.classList.add('d-none');
+        el.innerHTML = '';
+        return;
+    }
+    el.className = 'homeowner-note' + (isWarning ? ' warning' : '');
+    el.innerHTML = html;
+}
+
+function updateBenchmarkRankNote(noteId, rows, labelField, selectedLabel, metricLabel) {
+    if (!rows || !rows.length) {
+        setHomeownerNote(noteId, '', false);
+        return;
+    }
+    if (!selectedLabel) {
+        const top = rows[0];
+        setHomeownerNote(
+            noteId,
+            '<strong>' + escapeHtml(top[labelField] || '-') + '</strong> leads this view by ' +
+            escapeHtml(metricLabel) + '. Select a town or street to see your exact rank.',
+            false
+        );
+        return;
+    }
+    const idx = rows.findIndex(row => String(row[labelField] || '') === String(selectedLabel));
+    if (idx < 0) {
+        setHomeownerNote(noteId, '', false);
+        return;
+    }
+    const row = rows[idx];
+    const value = metricLabel.indexOf('PSF') >= 0 || metricLabel.indexOf('sqm') >= 0
+        ? '$' + Math.round(Number(row.psf || 0)).toLocaleString() + '/sqm'
+        : formatMoney(row.avg_price);
+    setHomeownerNote(
+        noteId,
+        '<strong>' + escapeHtml(selectedLabel) + '</strong> ranks <strong>#' + (idx + 1) +
+        ' of ' + rows.length + '</strong> by ' + escapeHtml(metricLabel) +
+        ' at <strong>' + value + '</strong>.',
+        false
+    );
 }
 
 /* ── Market Pulse ─────────────────────────────────────────────────────────── */
@@ -2759,10 +3021,19 @@ function updateFocusSummary(data) {
     const forecastLabel = !filters.town ? 'Forecast needs town'
         : filters.flat_type ? 'Forecast ready'
         : 'Forecast uses representative flat type';
+    let predictionLine = '';
+    const predicted = predictionSeed && predictionSeed.predicted_price ? parseFloat(predictionSeed.predicted_price) : null;
+    const latestAvg = Number(data[data.length - 1].avg_price || 0);
+    if (predicted && latestAvg) {
+        const diffPct = ((predicted - latestAvg) / latestAvg) * 100;
+        predictionLine = ' Your estimate is <strong>' + Math.abs(diffPct).toFixed(1) + '%</strong> ' +
+            (diffPct >= 0 ? 'above' : 'below') + ' the latest area average.';
+    }
     summaryEl.innerHTML =
         '<h6>' + escapeHtml(locationLabel) + '</h6>' +
         '<p class="mb-0 text-muted" style="font-size:0.83rem;">Tracking <strong>' + escapeHtml(flatTypeLabel) +
-        '</strong> from ' + escapeHtml(String(years.from || data[0].year)) + ' to ' + escapeHtml(String(years.to || data[data.length - 1].year)) + '.</p>' +
+        '</strong> from ' + escapeHtml(String(years.from || data[0].year)) + ' to ' + escapeHtml(String(years.to || data[data.length - 1].year)) + '.' +
+        predictionLine + '</p>' +
         '<div class="summary-meta">' +
             '<span class="summary-pill">' + data.length + ' yearly points</span>' +
             '<span class="summary-pill">' + forecastLabel + '</span>' +
@@ -2840,8 +3111,14 @@ function buildFlatTypeInsightHtml() {
 }
 
 function buildDistrictInsightHtml() {
-    const rows = latestComparisonMeta.rows || [];
-    const labelField = latestComparisonMeta.labelField || 'town';
+    const comparisonMeta = activeInsightSection === 'area'
+        ? latestAreaComparisonMeta
+        : latestDistrictComparisonMeta;
+    const psfRows = activeInsightSection === 'area'
+        ? latestAreaPsfData
+        : latestDistrictPsfData;
+    const rows = comparisonMeta.rows || [];
+    const labelField = comparisonMeta.labelField || (activeInsightSection === 'area' ? 'street_name' : 'town');
     if (!rows.length) {
         return '<span class="text-muted">No benchmark data is available for the current comparison.</span>';
     }
@@ -2849,11 +3126,13 @@ function buildDistrictInsightHtml() {
     const filters = getFilters();
     const high = rows[0];
     const low = rows[rows.length - 1];
-    const selectedLabel = labelField === 'street_name' ? (filters.street_name || '') : (filters.town || '');
+    const selectedLabel = labelField === 'street_name'
+        ? (predictionSeed.town === filters.town ? (predictionSeed.street_name || '') : '')
+        : (filters.town || '');
     const selectedIndex = selectedLabel
         ? rows.findIndex(row => String(row[labelField] || '') === selectedLabel)
         : -1;
-    const topPsfRow = latestPsfData[0] || null;
+    const topPsfRow = psfRows[0] || null;
     const spreadPct = Number(low.avg_price || 0)
         ? ((Number(high.avg_price || 0) - Number(low.avg_price || 0)) / Number(low.avg_price || 0)) * 100
         : 0;
@@ -2943,6 +3222,9 @@ function renderActiveRailInsight() {
             break;
         case 'flattype':
             html = buildFlatTypeInsightHtml();
+            break;
+        case 'area':
+            html = buildDistrictInsightHtml();
             break;
         case 'district':
             html = buildDistrictInsightHtml();
@@ -3038,20 +3320,33 @@ async function loadPriceTrend() {
         const ctx  = document.getElementById('priceTrendChart').getContext('2d');
         const type = document.getElementById('trendStyle').value;
         if (priceTrendChart) priceTrendChart.destroy();
+        const predictedPrice = predictionSeed && predictionSeed.predicted_price ? parseFloat(predictionSeed.predicted_price) : null;
+        const trendDatasets = [{
+            label: 'Average Price',
+            data:  data.map(d => d.avg_price),
+            borderColor: '#2563eb',
+            backgroundColor: type === 'line' ? 'rgba(37,99,235,0.14)' : 'rgba(37,99,235,0.78)',
+            fill: type === 'line',
+            tension: 0.28,
+            borderRadius: 5,
+        }];
+        if (predictedPrice && data.length) {
+            trendDatasets.push({
+                label: 'Your Estimate',
+                data: data.map(() => predictedPrice),
+                borderColor: '#10b981',
+                borderDash: [6, 4],
+                pointRadius: 0,
+                fill: false,
+                type: 'line',
+            });
+        }
 
         priceTrendChart = new Chart(ctx, {
             type: type,
             data: {
                 labels: data.map(d => d.year),
-                datasets: [{
-                    label: 'Average Price',
-                    data:  data.map(d => d.avg_price),
-                    borderColor: '#2563eb',
-                    backgroundColor: type === 'line' ? 'rgba(37,99,235,0.14)' : 'rgba(37,99,235,0.78)',
-                    fill: type === 'line',
-                    tension: 0.28,
-                    borderRadius: 5,
-                }]
+                datasets: trendDatasets
             },
             options: {
                 responsive: true,
@@ -3065,6 +3360,14 @@ async function loadPriceTrend() {
                 }
             }
         });
+        const lowSample = data.find(row => Number(row.txn_count || 0) > 0 && Number(row.txn_count || 0) < 20);
+        setHomeownerNote(
+            'trendSampleWarning',
+            lowSample
+                ? '<strong>Low sample warning:</strong> at least one year has fewer than 20 transactions, so price swings may be driven by a small number of sales.'
+                : '',
+            true
+        );
         updateMyflatVsAvg();
         updateMyflatPosition();
         return data;
@@ -3072,6 +3375,7 @@ async function loadPriceTrend() {
         latestTrendData = [];
         setKpis([]);
         updateFocusSummary([]);
+        setHomeownerNote('trendSampleWarning', '', true);
         updateMyflatVsAvg();
         updateMyflatPosition();
         return [];
@@ -3118,26 +3422,43 @@ async function loadFlatType() {
         const cardsEl = document.getElementById('flatTypeCards');
         if (cardsEl && data.length) {
             const total = data.reduce((s, d) => s + Number(d.txn_count || 0), 0);
+            const selectedFlatType = (getFilters().flat_type || predictionSeed.flat_type || '').trim();
+            const selectedRow = data.find(row => String(row.flat_type || '') === selectedFlatType);
             cardsEl.innerHTML = data.map((row, i) => {
                 const pct = total ? Math.round((row.txn_count / total) * 100) : 0;
-                return '<div class="flat-type-mini-card">' +
+                const isSelected = selectedFlatType && row.flat_type === selectedFlatType;
+                return '<div class="flat-type-mini-card' + (isSelected ? ' is-selected' : '') + '">' +
                     '<div class="flat-type-dot" style="background:' + COLORS[i % COLORS.length] + '"></div>' +
                     '<div class="flat-type-name">' + escapeHtml(row.flat_type) + '</div>' +
                     '<div class="flat-type-pct">' + pct + '%</div>' +
                     '<div class="flat-type-avg">' + formatMoney(row.avg_price) + '</div>' +
                     '</div>';
             }).join('');
+            if (selectedRow) {
+                const selectedPct = total ? ((Number(selectedRow.txn_count || 0) / total) * 100).toFixed(1) : '0.0';
+                setHomeownerNote(
+                    'flatTypePersonalNote',
+                    '<strong>' + escapeHtml(selectedFlatType) + '</strong> makes up <strong>' +
+                    selectedPct + '%</strong> of recent transactions in this scope, with an average price of <strong>' +
+                    formatMoney(selectedRow.avg_price) + '</strong>.',
+                    false
+                );
+            } else {
+                setHomeownerNote('flatTypePersonalNote', '', false);
+            }
         } else if (cardsEl) {
             cardsEl.innerHTML = '<div class="text-muted" style="font-size:0.83rem;grid-column:1/-1;">No data available.</div>';
+            setHomeownerNote('flatTypePersonalNote', '', false);
         }
     } catch (e) {
         if (flatTypeChart) { flatTypeChart.destroy(); flatTypeChart = null; }
+        setHomeownerNote('flatTypePersonalNote', '', false);
     } finally {
         setLoading('flatTypeChart', false);
     }
 }
 
-/* ── District / Street comparison chart ──────────────────────────────────── */
+/* ── Area / District comparison charts ───────────────────────────────────── */
 function buildStreetSnapshots(rows) {
     const latestByStreet = {};
     rows.forEach(row => {
@@ -3151,50 +3472,25 @@ function buildStreetSnapshots(rows) {
     return Object.values(latestByStreet);
 }
 
-async function loadLocationComparison() {
-    const filters    = getFilters();
-    const titleEl    = document.getElementById('locationComparisonTitle');
-    const subtitleEl = document.getElementById('locationComparisonSubtitle');
-    const ctx        = document.getElementById('districtChart').getContext('2d');
-    setLoading('districtChart', true);
-    try {
-        let rows = [], chartRows = [], labelField = 'town', selectedLabel = filters.town || '';
-
-        if (filters.town && !filters.street_name && !filters.block) {
-            const params = new URLSearchParams();
-            params.set('town', filters.town);
-            if (filters.flat_type) params.set('flat_type', filters.flat_type);
-            rows = await fetchJSON('/api/street_price_trend?' + params.toString());
-            chartRows = buildStreetSnapshots(rows)
-                .sort((a, b) => Number(b.avg_price || 0) - Number(a.avg_price || 0))
-                .slice(0, 12);
-            labelField = 'street_name';
-            selectedLabel = '';
-            titleEl.innerHTML = '<i class="bi bi-signpost-split me-2 text-primary"></i>Street Comparison in ' + escapeHtml(filters.town);
-            subtitleEl.textContent = 'Latest available year by average resale price.';
-        } else {
-            rows = await fetchJSON('/api/district_comparison');
-            chartRows = rows.slice();
-            titleEl.innerHTML = '<i class="bi bi-buildings me-2 text-primary"></i>Town Benchmark (Latest Year)';
-            subtitleEl.textContent = filters.town && (filters.street_name || filters.block)
-                ? 'Selected location highlighted against the wider town market.'
-                : 'Compare broader town performance side by side.';
-        }
-
-        if (districtChart) districtChart.destroy();
-        districtChart = new Chart(ctx, {
+function renderHorizontalBenchmarkChart(existingChart, canvasId, rows, labelField, selectedLabel, valueField, datasetLabel, tooltipLabel, colorBase) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return existingChart;
+    if (existingChart) existingChart.destroy();
+    const ctx = canvas.getContext('2d');
+    return new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: chartRows.map(row => labelField === 'street_name'
+                labels: rows.map(row => labelField === 'street_name'
                     ? wrapChartLabel(row[labelField], 14)
                     : String(row[labelField] || '')
                 ),
                 datasets: [{
-                    label: 'Average Price',
-                    data:  chartRows.map(row => row.avg_price),
-                    backgroundColor: chartRows.map((row, i) => {
+                    label: datasetLabel,
+                    data:  rows.map(row => row[valueField]),
+                    backgroundColor: rows.map((row, i) => {
+                        if (labelField === 'street_name' && selectedLabel && row[labelField] === selectedLabel) return '#2563eb';
                         if (labelField === 'town' && selectedLabel && row[labelField] === selectedLabel) return '#2563eb';
-                        return labelField === 'street_name' ? COLORS[i % COLORS.length] : 'rgba(100,116,139,0.72)';
+                        return labelField === 'street_name' ? COLORS[i % COLORS.length] : colorBase;
                     }),
                     borderRadius: 6,
                 }]
@@ -3211,48 +3507,106 @@ async function loadLocationComparison() {
                 },
                 plugins: {
                     legend:  { display: false },
-                    tooltip: { callbacks: { label: tCtx => ' Avg Price: ' + formatMoney(tCtx.parsed.x) } }
+                    tooltip: { callbacks: { label: tCtx => ' ' + tooltipLabel + ': ' + (valueField === 'psf' ? '$' + Number(tCtx.parsed.x || 0).toLocaleString() + '/sqm' : formatMoney(tCtx.parsed.x)) } }
                 },
                 scales: {
-                    x: { ticks: { callback: v => '$' + (v / 1000).toFixed(0) + 'K' } },
+                    x: { ticks: { callback: v => valueField === 'psf' ? '$' + Number(v || 0).toLocaleString() : '$' + (v / 1000).toFixed(0) + 'K' } },
                     y: getHorizontalCategoryAxisOptions(labelField)
-                },
-                onClick: async (_, activeEls) => {
-                    if (!activeEls.length) return;
-                    const row = chartRows[activeEls[0].index];
-                    if (!row) return;
-                    if (labelField === 'street_name') {
-                        await syncPredictionFormScope({
-                            town: filters.town,
-                            street_name: row.street_name,
-                            block: '',
-                            flat_type: filters.flat_type,
-                        });
-                        await applyPredictionScopeToDashboard();
-                        return;
-                    }
-                    await syncPredictionFormScope({
-                        town: row.town,
-                        street_name: '',
-                        block: '',
-                        flat_type: filters.flat_type,
-                    });
-                    await applyPredictionScopeToDashboard();
                 }
             }
         });
+}
 
-        latestBenchmarkData = chartRows;
-        latestComparisonMeta = { rows: chartRows, labelField: labelField };
-        return latestComparisonMeta;
+async function loadAreaComparison() {
+    const filters = getFilters();
+    const titleEl = document.getElementById('areaComparisonTitle');
+    const subtitleEl = document.getElementById('areaComparisonSubtitle');
+    setLoading('areaChart', true);
+    try {
+        if (!filters.town) {
+            if (areaChart) { areaChart.destroy(); areaChart = null; }
+            latestAreaBenchmarkData = [];
+            latestAreaComparisonMeta = { rows: [], labelField: 'street_name' };
+            if (titleEl) titleEl.innerHTML = '<i class="bi bi-signpost-split me-2 text-primary"></i>Area Comparison';
+            if (subtitleEl) subtitleEl.textContent = 'Select a town to compare streets as the available area unit.';
+            setHomeownerNote('areaRankNote', '<strong>Select a town</strong> to compare areas within it.', false);
+            return latestAreaComparisonMeta;
+        }
+
+        const params = new URLSearchParams();
+        params.set('town', filters.town);
+        if (filters.flat_type) params.set('flat_type', filters.flat_type);
+        const rows = await fetchJSON('/api/street_price_trend?' + params.toString());
+        const chartRows = buildStreetSnapshots(rows)
+            .sort((a, b) => Number(b.avg_price || 0) - Number(a.avg_price || 0))
+            .slice(0, 12);
+        const selectedLabel = predictionSeed.town === filters.town ? (predictionSeed.street_name || '') : '';
+
+        if (titleEl) titleEl.innerHTML = '<i class="bi bi-signpost-split me-2 text-primary"></i>Area Comparison Within ' + escapeHtml(filters.town);
+        if (subtitleEl) subtitleEl.textContent = 'Compares streets as the available area unit inside the selected town. Hover or tap a bar to inspect the average price.';
+        areaChart = renderHorizontalBenchmarkChart(areaChart, 'areaChart', chartRows, 'street_name', selectedLabel, 'avg_price', 'Average Price', 'Avg Price', 'rgba(100,116,139,0.72)');
+
+        latestAreaBenchmarkData = chartRows;
+        latestAreaComparisonMeta = { rows: chartRows, labelField: 'street_name' };
+        if (activeInsightSection === 'area') {
+            latestBenchmarkData = chartRows;
+            latestComparisonMeta = latestAreaComparisonMeta;
+        }
+        updateBenchmarkRankNote(
+            'areaRankNote',
+            chartRows,
+            'street_name',
+            selectedLabel,
+            'average area price'
+        );
+        return latestAreaComparisonMeta;
     } catch (e) {
-        latestBenchmarkData = [];
-        latestComparisonMeta = { rows: [], labelField: 'town' };
+        latestAreaBenchmarkData = [];
+        latestAreaComparisonMeta = { rows: [], labelField: 'street_name' };
+        setHomeownerNote('areaRankNote', '', false);
+        if (areaChart) { areaChart.destroy(); areaChart = null; }
+        return latestAreaComparisonMeta;
+    } finally {
+        setLoading('areaChart', false);
+    }
+}
+
+async function loadDistrictComparison() {
+    const filters = getFilters();
+    const titleEl = document.getElementById('locationComparisonTitle');
+    const subtitleEl = document.getElementById('locationComparisonSubtitle');
+    setLoading('districtChart', true);
+    try {
+        const chartRows = (await fetchJSON('/api/district_comparison'))
+            .slice()
+            .sort((a, b) => Number(b.avg_price || 0) - Number(a.avg_price || 0));
+        const selectedLabel = filters.town || '';
+
+        if (titleEl) titleEl.innerHTML = '<i class="bi bi-globe-asia-australia me-2 text-primary"></i>District Comparison';
+        if (subtitleEl) subtitleEl.textContent = 'Town-to-town benchmark across Singapore HDB resale markets. Selected town is highlighted when available.';
+        districtChart = renderHorizontalBenchmarkChart(districtChart, 'districtChart', chartRows, 'town', selectedLabel, 'avg_price', 'Average Price', 'Avg Price', 'rgba(100,116,139,0.72)');
+
+        latestDistrictBenchmarkData = chartRows;
+        latestDistrictComparisonMeta = { rows: chartRows, labelField: 'town' };
+        if (activeInsightSection === 'district') {
+            latestBenchmarkData = chartRows;
+            latestComparisonMeta = latestDistrictComparisonMeta;
+        }
+        updateBenchmarkRankNote('districtRankNote', chartRows, 'town', selectedLabel, 'average town price');
+        return latestDistrictComparisonMeta;
+    } catch (e) {
+        latestDistrictBenchmarkData = [];
+        latestDistrictComparisonMeta = { rows: [], labelField: 'town' };
+        setHomeownerNote('districtRankNote', '', false);
         if (districtChart) { districtChart.destroy(); districtChart = null; }
-        return latestComparisonMeta;
+        return latestDistrictComparisonMeta;
     } finally {
         setLoading('districtChart', false);
     }
+}
+
+async function loadLocationComparison() {
+    return loadDistrictComparison();
 }
 
 /* ── Volume chart ─────────────────────────────────────────────────────────── */
@@ -3280,94 +3634,104 @@ async function loadVolume() {
                 plugins: { legend: { display: false }, tooltip: { callbacks: { label: tCtx => ' Transactions: ' + Number(tCtx.parsed.y||0).toLocaleString() } } }
             }
         });
+        const lowVolume = latestVolumeData.find(row => Number(row.txn_count || 0) > 0 && Number(row.txn_count || 0) < 20);
+        setHomeownerNote(
+            'volumeSampleWarning',
+            lowVolume
+                ? '<strong>Low activity warning:</strong> at least one year has fewer than 20 resale transactions, so averages may be less stable.'
+                : '',
+            true
+        );
+    } catch (e) {
+        setHomeownerNote('volumeSampleWarning', '', true);
     } finally {
         setLoading('volumeChart', false);
     }
 }
 
-/* ── PSF chart ────────────────────────────────────────────────────────────── */
+/* ── PSF charts ───────────────────────────────────────────────────────────── */
+function updatePsfKpis(rows) {
+    if (!rows || !rows.length) return;
+    const avgPsf = Math.round(rows.reduce((s, r) => s + Number(r.psf || 0), 0) / rows.length);
+    const railPsm = document.getElementById('railKpiPsm');
+    if (railPsm) railPsm.textContent = avgPsf ? '$' + avgPsf.toLocaleString() : '—';
+    const psfTop = document.getElementById('kpiPsfVal');
+    if (psfTop) psfTop.textContent = avgPsf ? '$' + avgPsf.toLocaleString() : '—';
+
+    if (rows.length >= 2) {
+        const topPsf  = Number(rows[0].psf || 0);
+        const lastPsf = Number(rows[rows.length - 1].psf || 0);
+        const psfPct  = lastPsf ? ((topPsf - lastPsf) / lastPsf) * 100 : null;
+        setChangeIndicator('kpiPsfChange', 'kpiPsfArrow', psfPct);
+    }
+}
+
+async function loadAreaPSF() {
+    const filters = getFilters();
+    const titleEl = document.getElementById('areaPsfTitle');
+    const subtitleEl = document.getElementById('areaPsfSubtitle');
+    setLoading('areaPsfChart', true);
+    try {
+        if (!filters.town) {
+            if (areaPsfChart) { areaPsfChart.destroy(); areaPsfChart = null; }
+            latestAreaPsfData = [];
+            if (titleEl) titleEl.innerHTML = '<i class="bi bi-cash-stack me-2 text-primary"></i>Area Price per sqm';
+            if (subtitleEl) subtitleEl.textContent = 'Select a town to compare street-level price density.';
+            setHomeownerNote('areaPsfRankNote', '', false);
+            return [];
+        }
+
+        const params = new URLSearchParams();
+        params.set('town', filters.town);
+        if (filters.flat_type) params.set('flat_type', filters.flat_type);
+        const rows = buildStreetSnapshots(await fetchJSON('/api/street_price_trend?' + params.toString()))
+            .sort((a, b) => Number(b.psf || 0) - Number(a.psf || 0))
+            .slice(0, 12);
+        const selectedLabel = predictionSeed.town === filters.town ? (predictionSeed.street_name || '') : '';
+
+        if (titleEl) titleEl.innerHTML = '<i class="bi bi-cash-stack me-2 text-primary"></i>Area Price per sqm';
+        if (subtitleEl) subtitleEl.textContent = 'Street-level price density inside the selected town.';
+        areaPsfChart = renderHorizontalBenchmarkChart(areaPsfChart, 'areaPsfChart', rows, 'street_name', selectedLabel, 'psf', '$/sqm', '$/sqm', 'rgba(37,99,235,0.82)');
+
+        latestAreaPsfData = rows;
+        if (activeInsightSection === 'area') latestPsfData = rows;
+        updateBenchmarkRankNote('areaPsfRankNote', rows, 'street_name', selectedLabel, 'area PSF');
+        return rows;
+    } catch (e) {
+        latestAreaPsfData = [];
+        setHomeownerNote('areaPsfRankNote', '', false);
+        if (areaPsfChart) { areaPsfChart.destroy(); areaPsfChart = null; }
+        return [];
+    } finally {
+        setLoading('areaPsfChart', false);
+    }
+}
+
 async function loadPSF() {
-    const filters    = getFilters();
-    const titleEl    = document.getElementById('psfTitle');
+    const filters = getFilters();
+    const titleEl = document.getElementById('psfTitle');
     const subtitleEl = document.getElementById('psfSubtitle');
-    const ctx        = document.getElementById('psfChart').getContext('2d');
     setLoading('psfChart', true);
     try {
-        let rows = [], labelField = 'town', highlightTown = filters.town || '';
+        const rows = (await fetchJSON('/api/district_comparison'))
+            .slice()
+            .sort((a, b) => Number(b.psf || 0) - Number(a.psf || 0));
+        const selectedLabel = filters.town || '';
 
-        if (filters.town && !filters.street_name && !filters.block) {
-            const params = new URLSearchParams();
-            params.set('town', filters.town);
-            if (filters.flat_type) params.set('flat_type', filters.flat_type);
-            rows = buildStreetSnapshots(await fetchJSON('/api/street_price_trend?' + params.toString()))
-                .sort((a, b) => Number(b.psf || 0) - Number(a.psf || 0))
-                .slice(0, 12);
-            labelField = 'street_name';
-            titleEl.innerHTML = '<i class="bi bi-cash-stack me-2 text-primary"></i>Price per sqm by Street';
-            subtitleEl.textContent = 'Latest available year for streets within the selected town.';
-        } else {
-            rows = await fetchJSON('/api/district_comparison');
-            rows.sort((a, b) => Number(b.psf || 0) - Number(a.psf || 0));
-            titleEl.innerHTML = '<i class="bi bi-cash-stack me-2 text-primary"></i>Price per sqm by Town';
-            subtitleEl.textContent = 'Average price per square metre for the current benchmark set.';
-        }
+        if (titleEl) titleEl.innerHTML = '<i class="bi bi-cash-stack me-2 text-primary"></i>District Price per sqm';
+        if (subtitleEl) subtitleEl.textContent = 'Town-to-town price per square metre benchmark.';
+        psfChart = renderHorizontalBenchmarkChart(psfChart, 'psfChart', rows, 'town', selectedLabel, 'psf', '$/sqm', '$/sqm', 'rgba(37,99,235,0.82)');
 
-        latestPsfData = rows;
-
-        // Update right rail PSM
-        if (rows.length) {
-            const avgPsf = Math.round(rows.reduce((s, r) => s + Number(r.psf || 0), 0) / rows.length);
-            const railPsm = document.getElementById('railKpiPsm');
-            if (railPsm) railPsm.textContent = avgPsf ? '$' + avgPsf.toLocaleString() : '—';
-            const psfTop = document.getElementById('kpiPsfVal');
-            if (psfTop) psfTop.textContent = avgPsf ? '$' + avgPsf.toLocaleString() : '—';
-
-            // PSF change: compare first vs last if same label field
-            if (rows.length >= 2) {
-                const topPsf  = Number(rows[0].psf || 0);
-                const lastPsf = Number(rows[rows.length - 1].psf || 0);
-                const psfPct  = lastPsf ? ((topPsf - lastPsf) / lastPsf) * 100 : null;
-                setChangeIndicator('kpiPsfChange', 'kpiPsfArrow', psfPct);
-            }
-        }
-
-        if (psfChart) psfChart.destroy();
-        psfChart = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: rows.map(row => labelField === 'street_name'
-                    ? wrapChartLabel(row[labelField], 14)
-                    : String(row[labelField] || '')
-                ),
-                datasets: [{
-                    label: '$/sqm',
-                    data:  rows.map(row => row.psf),
-                    backgroundColor: rows.map((row, i) => {
-                        if (labelField === 'town' && highlightTown && row.town === highlightTown) return '#2563eb';
-                        return labelField === 'street_name' ? COLORS[i % COLORS.length] : 'rgba(37,99,235,0.82)';
-                    }),
-                    borderRadius: 4,
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                layout: { padding: { left: 20, right: 6 } },
-                indexAxis: 'y',
-                interaction: {
-                    mode: 'nearest',
-                    axis: 'y',
-                    intersect: true,
-                },
-                plugins: { legend: { display: false }, tooltip: { callbacks: { label: tCtx => ' $/sqm: ' + formatMoney(tCtx.parsed.x) } } },
-                scales: {
-                    x: { ticks: { callback: v => '$' + Number(v || 0).toLocaleString() } },
-                    y: getHorizontalCategoryAxisOptions(labelField)
-                }
-            }
-        });
+        latestDistrictPsfData = rows;
+        if (activeInsightSection === 'district') latestPsfData = rows;
+        updatePsfKpis(rows);
+        updateBenchmarkRankNote('psfRankNote', rows, 'town', selectedLabel, 'town PSF');
+        return rows;
     } catch (e) {
+        latestDistrictPsfData = [];
+        setHomeownerNote('psfRankNote', '', false);
         if (psfChart) { psfChart.destroy(); psfChart = null; }
+        return [];
     } finally {
         setLoading('psfChart', false);
     }
@@ -3384,6 +3748,7 @@ function hideFuturePredictions() {
     latestForecastData = [];
     latestForecastMeta = {};
     if (futurePredChart) { futurePredChart.destroy(); futurePredChart = null; }
+    setHomeownerNote('futurePredDelta', '', false);
 }
 
 async function loadFuturePredictions() {
@@ -3468,6 +3833,20 @@ async function loadFuturePredictions() {
                 '<td class="text-end">' + escapeHtml(String(item.remaining_lease || '—')) + ' yrs</td>' +
                 '</tr>';
         }).join('');
+        const first = timeline[0];
+        const last = timeline[timeline.length - 1];
+        const forecastDelta = Number(first.predicted_price || 0)
+            ? ((Number(last.predicted_price || 0) - Number(first.predicted_price || 0)) / Number(first.predicted_price || 0)) * 100
+            : null;
+        setHomeownerNote(
+            'futurePredDelta',
+            forecastDelta !== null
+                ? 'Base-case movement from now to <strong>' + escapeHtml(String(last.year)) + '</strong>: <strong>' +
+                    (forecastDelta >= 0 ? '+' : '') + forecastDelta.toFixed(1) + '%</strong>, ending near <strong>' +
+                    formatMoney(last.predicted_price) + '</strong>.'
+                : '',
+            false
+        );
     } catch (e) {
         hideFuturePredictions();
     } finally {
@@ -3480,7 +3859,9 @@ async function refreshDashboard() {
     updateBreadcrumb();
     await loadPriceTrend();
     await loadFlatType();
-    await loadLocationComparison();
+    await loadAreaComparison();
+    await loadAreaPSF();
+    await loadDistrictComparison();
     await loadVolume();
     await loadPSF();
     await loadFuturePredictions();
@@ -3518,7 +3899,7 @@ document.getElementById('clearLocationBtn').addEventListener('click', clearLocat
     syncDashboardFiltersFromPredictionForm();
     updateBreadcrumb();
     await refreshDashboard();
-    const focusParam = pageParams.get('focus');
+    const focusParam = pageParams.get('focus') || pageParams.get('section');
     if (focusParam) switchSection(focusParam);
     if (IS_PREMIUM) {
         const _f = getFilters();
@@ -3635,6 +4016,7 @@ function updateMyflatPosition() {
     const actEl = document.getElementById('posActivity');
     if (hasComparableData) {
         actEl.textContent = comparablePrices.length + ' comps · last 5y' +
+            (comparablePrices.length < 20 ? ' · low sample' : '') +
             (latestPredictionContextMeta.scope_broadened ? ' · widened scope' : '');
     } else if (txnText && txnText !== '—') {
         actEl.textContent = txnText + ' sales · ' + yoyText;
@@ -3772,6 +4154,14 @@ async function loadPredictionContext() {
             if (leaseCanvas) {
                 document.getElementById('leasePlaceholder').classList.add('d-none');
                 document.getElementById('leaseDecayContainer').classList.remove('d-none');
+                const remainingLease = getPredictionRemainingLease();
+                setHomeownerNote(
+                    'leasePositionNote',
+                    remainingLease !== null
+                        ? 'Your flat has about <strong>' + remainingLease + ' years</strong> of lease remaining. Use the buckets below to compare how similar lease ages have traded in this area.'
+                        : '',
+                    false
+                );
                 const ctx = leaseCanvas.getContext('2d');
                 if (leaseDecChart) leaseDecChart.destroy();
                 leaseDecChart = new Chart(ctx, {
@@ -3787,12 +4177,15 @@ async function loadPredictionContext() {
                     }
                 });
             }
+        } else {
+            setHomeownerNote('leasePositionNote', '', false);
         }
         renderMyflatRecentTransactions();
         updateMyflatPosition();
         renderActiveRailInsight();
     } catch(e) {
         latestLeaseDecayData = [];
+        setHomeownerNote('leasePositionNote', '', false);
         latestPredictionRecentTransactions = [];
         latestPredictionContextMeta = { scope_broadened: false };
         renderMyflatRecentTransactions();
@@ -3846,7 +4239,7 @@ function renderFaqGroup(containerId, questions) {
     const el = document.getElementById(containerId);
     if (!el) return;
     if (!questions || !questions.length) {
-        el.innerHTML = '<div class="text-muted" style="font-size:0.83rem;">No AI insights for this section.</div>';
+        el.innerHTML = '<div class="text-muted" style="font-size:0.83rem;">No suggested questions for this section.</div>';
         return;
     }
     let html = '';
@@ -3860,34 +4253,95 @@ function renderFaqGroup(containerId, questions) {
             '<div class="ai-faq-answer"></div>' +
             '</div>';
     });
-    html += buildAiGeneratedDisclaimerHtml();
     if (!IS_PREMIUM) {
         html += '<div class="ai-faq-counter" id="aiFaqCounter">' + aiAnswersRemaining + ' of {{ ai_daily_limit }} questions remaining today</div>';
     }
     el.innerHTML = html;
 }
 
+function getPredictionRemainingLease() {
+    const seed = predictionSeed || {};
+    const leaseYear = seed.lease_commence ? parseInt(seed.lease_commence, 10) : null;
+    if (!leaseYear) return null;
+    return Math.max(0, 99 - (new Date().getFullYear() - leaseYear));
+}
+
+function buildSuggestedQuestionGroups() {
+    const filters = getFilters();
+    const town = filters.town || predictionSeed.town || 'this area';
+    const flatType = filters.flat_type || predictionSeed.flat_type || 'this flat type';
+    const remainingLease = getPredictionRemainingLease();
+    const predictedPrice = predictionSeed && predictionSeed.predicted_price ? parseFloat(predictionSeed.predicted_price) : null;
+    const avgText = document.getElementById('kpiAvgPrice') ? document.getElementById('kpiAvgPrice').textContent.replace(/[$,]/g, '') : '';
+    const avgPrice = avgText ? parseFloat(avgText) : null;
+    const latest = latestTrendData.length ? latestTrendData[latestTrendData.length - 1] : null;
+    const prev = latestTrendData.length >= 2 ? latestTrendData[latestTrendData.length - 2] : null;
+    const latestTxns = latest ? Number(latest.txn_count || 0) : 0;
+    const pricePct = latest && prev && Number(prev.avg_price || 0)
+        ? ((Number(latest.avg_price || 0) - Number(prev.avg_price || 0)) / Number(prev.avg_price || 0)) * 100
+        : null;
+
+    const value = [];
+    if (predictedPrice && avgPrice && avgPrice > 0) {
+        value.push(predictedPrice >= avgPrice
+            ? 'Why is my estimate above the area average?'
+            : 'Why is my estimate below the area average?');
+    }
+    if (pricePct !== null) {
+        value.push(pricePct >= 0
+            ? 'What is pushing prices up here?'
+            : 'Why are prices cooling here?');
+    }
+    if (!value.length) value.push('What drives prices in ' + town + '?');
+
+    const demand = [];
+    demand.push(latestTxns && latestTxns < 20
+        ? 'Is the sales sample too thin?'
+        : 'Is buyer activity healthy here?');
+    demand.push('Are transactions rising or slowing?');
+
+    const position = [];
+    position.push('How does my flat compare nearby?');
+    if (filters.town) position.push('Where does ' + town + ' rank?');
+    else position.push('Which towns look stronger?');
+
+    const lease = [];
+    if (remainingLease !== null) {
+        lease.push('How does my remaining lease affect value?');
+        if (remainingLease < 70) lease.push('Is lease decay a major drag?');
+    } else {
+        lease.push('Why does lease decay matter?');
+        lease.push('When does lease become risky?');
+    }
+
+    return {
+        value: value.slice(0, 2),
+        demand: demand.slice(0, 2),
+        position: position.slice(0, 2),
+        lease: lease.slice(0, 2),
+    };
+}
+
 function collectChartDataSummary() {
+    const benchmarkRows = activeInsightSection === 'area'
+        ? latestAreaBenchmarkData
+        : activeInsightSection === 'district'
+        ? latestDistrictBenchmarkData
+        : (latestDistrictBenchmarkData.length ? latestDistrictBenchmarkData : latestAreaBenchmarkData);
+    const psfRows = activeInsightSection === 'area'
+        ? latestAreaPsfData
+        : activeInsightSection === 'district'
+        ? latestDistrictPsfData
+        : (latestDistrictPsfData.length ? latestDistrictPsfData : latestAreaPsfData);
     return {
         trend:     latestTrendData.map(d => ({ year: d.year, avg_price: d.avg_price, txn_count: d.txn_count })),
         volume:    latestVolumeData.map(d => ({ year: d.year, txn_count: d.txn_count })),
         flat_type: latestFlatTypeData.map(d => ({ flat_type: d.flat_type, txn_count: d.txn_count, avg_price: d.avg_price })),
-        benchmark: latestBenchmarkData.slice(0,10).map(d => ({ label: d.town || d.street_name, avg_price: d.avg_price })),
-        psf:       latestPsfData.slice(0,10).map(d => ({ label: d.town || d.street_name, psf: d.psf })),
+        benchmark: benchmarkRows.slice(0,10).map(d => ({ label: d.town || d.street_name, avg_price: d.avg_price })),
+        psf:       psfRows.slice(0,10).map(d => ({ label: d.town || d.street_name, psf: d.psf })),
         forecast:  latestForecastData.map(d => ({ year: d.year, predicted_price: d.predicted_price, price_low: d.price_low, price_high: d.price_high })),
         lease:     latestLeaseDecayData.map(d => ({ label: d.lease_bucket || d.bucket || d.label, avg_price: d.avg_price, txn_count: d.txn_count })),
     };
-}
-
-function collectChartImages() {
-    const images = {};
-    ['priceTrendChart','volumeChart','flatTypeChart','districtChart','psfChart','futurePredChart'].forEach(id => {
-        const canvas = document.getElementById(id);
-        if (canvas && canvas.getContext) {
-            try { images[id] = canvas.toDataURL('image/png').split(',')[1]; } catch(e) {}
-        }
-    });
-    return images;
 }
 
 function getAiFaqCacheKey() {
@@ -3904,53 +4358,11 @@ function renderAiFaqFromGroups(groups) {
 
 async function loadAiFaqQuestions() {
     if (!IS_PREMIUM) return;
-    const token    = ++aiFaqReqToken;
     const cacheKey = getAiFaqCacheKey();
     if (aiFaqQuestionsCache[cacheKey]) { renderAiFaqFromGroups(aiFaqQuestionsCache[cacheKey]); return; }
-
-    renderFaqShimmer('aiFaqValue', 2);
-    renderFaqShimmer('aiFaqDemand', 2);
-    renderFaqShimmer('aiFaqPosition', 2);
-    renderFaqShimmer('aiFaqLease', 2);
-
-    const filters     = getFilters();
-    const chartData   = collectChartDataSummary();
-    const chartImages = collectChartImages();
-
-    try {
-        const resp = await fetch('/api/ai_questions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ filters, chart_data: chartData, chart_images: chartImages, my_flat: buildMyFlatContext() }),
-        });
-        if (token !== aiFaqReqToken) return;
-        if (!resp.ok) throw new Error('AI unavailable');
-        const result = await resp.json();
-        const groups = result.groups || {};
-        aiAnswersRemaining = result.remaining >= 0 ? result.remaining : Infinity;
-
-        if (result.ai_unavailable) {
-            const fallback = buildAiFallbackHtml('panel');
-            const firstEl = document.getElementById('aiFaqValue');
-            if (firstEl) firstEl.innerHTML = fallback;
-            ['aiFaqDemand','aiFaqPosition','aiFaqLease'].forEach(id => {
-                const el = document.getElementById(id);
-                if (el) el.innerHTML = '<div class="text-muted" style="font-size:0.78rem;">—</div>';
-            });
-            return;
-        }
-        if (Object.keys(groups).length > 0) aiFaqQuestionsCache[cacheKey] = groups;
-        renderAiFaqFromGroups(groups);
-    } catch (e) {
-        if (token !== aiFaqReqToken) return;
-        const fallback = buildAiFallbackHtml('panel');
-        const firstEl = document.getElementById('aiFaqValue');
-        if (firstEl) firstEl.innerHTML = fallback;
-        ['aiFaqDemand','aiFaqPosition','aiFaqLease'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.innerHTML = '<div class="text-muted" style="font-size:0.78rem;">—</div>';
-        });
-    }
+    const groups = buildSuggestedQuestionGroups();
+    aiFaqQuestionsCache[cacheKey] = groups;
+    renderAiFaqFromGroups(groups);
 }
 
 function debouncedLoadAiFaq() {
@@ -3958,11 +4370,7 @@ function debouncedLoadAiFaq() {
     clearTimeout(aiFaqDebounceTimer);
     const cacheKey = getAiFaqCacheKey();
     if (aiFaqQuestionsCache[cacheKey]) { renderAiFaqFromGroups(aiFaqQuestionsCache[cacheKey]); return; }
-    renderFaqShimmer('aiFaqValue', 2);
-    renderFaqShimmer('aiFaqDemand', 2);
-    renderFaqShimmer('aiFaqPosition', 2);
-    renderFaqShimmer('aiFaqLease', 2);
-    aiFaqDebounceTimer = setTimeout(loadAiFaqQuestions, 2000);
+    aiFaqDebounceTimer = setTimeout(loadAiFaqQuestions, 150);
 }
 
 function updateAllCounters() {
@@ -3998,7 +4406,14 @@ async function expandFaqItem(item) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 question,
-                context: { filters: getFilters(), chart_data: collectChartDataSummary(), chart_images: collectChartImages(), my_flat: buildMyFlatContext() },
+                surface: 'analytics',
+                context: {
+                    surface: 'analytics',
+                    active_section: activeInsightSection,
+                    filters: getFilters(),
+                    chart_data: collectChartDataSummary(),
+                    my_flat: buildMyFlatContext()
+                },
             }),
         });
 
@@ -4012,7 +4427,8 @@ async function expandFaqItem(item) {
         if (!resp.ok) throw new Error('AI error');
         const result = await resp.json();
         const answer = String(result.answer || '').trim();
-        const formatted = renderAiMarkdown(answer || 'No response received.') + (answer ? buildAiGeneratedDisclaimerHtml() : '');
+        const linkedAnswer = withAnalyticsResourceLinks(question, answer);
+        const formatted = renderAiMarkdown(linkedAnswer || 'No response received.') + (answer ? buildAiGeneratedDisclaimerHtml() : '');
         aiFaqAnswerCache[question] = formatted;
         answerEl.innerHTML = formatted;
 
@@ -4171,6 +4587,15 @@ if (IS_PREMIUM) {
         return bubble;
     }
 
+    function isLikelyIncompleteAiReply(reply) {
+        const text = String(reply || '').trim();
+        if (text.length < 24) return false;
+        if (/[.!?]["')\]]?$/.test(text)) return false;
+        const lastWord = (text.match(/([A-Za-z]+)$/) || [])[1] || '';
+        return !/[.!?]/.test(text.slice(-20)) ||
+            /^(and|or|but|with|because|for|to|of|by|as|while|which|that|the|a|an|in|on|at|from|than|about|between)$/i.test(lastWord);
+    }
+
     function showTyping() {
         const el = document.createElement('div');
         el.className = 'ai-chat-bubble ai-chat-typing';
@@ -4196,14 +4621,24 @@ if (IS_PREMIUM) {
                 body: JSON.stringify({
                     message: text,
                     history: chatHistory,
-                    context: { filters: getFilters(), chart_data: collectChartDataSummary(), chart_images: collectChartImages(), my_flat: buildMyFlatContext() },
+                    surface: 'analytics',
+                    active_section: activeInsightSection,
+                    context: {
+                        surface: 'analytics',
+                        active_section: activeInsightSection,
+                        filters: getFilters(),
+                        chart_data: collectChartDataSummary(),
+                        my_flat: buildMyFlatContext()
+                    },
                 }),
             });
             removeTyping();
             if (!resp.ok) {
                 const err = await resp.json().catch(() => ({}));
                 const isOutage = !err.error || /unavail|temporarily|not configured|went wrong/i.test(err.error);
-                if (isOutage) {
+                if (err.error === 'limit_reached') {
+                    appendBubble("You've reached today's AI chat limit. Try again tomorrow.", 'bot');
+                } else if (isOutage) {
                     const bubble = appendBubble('__FALLBACK__', 'bot');
                     bubble.innerHTML = buildAiFallbackHtml('bubble');
                 } else {
@@ -4212,10 +4647,16 @@ if (IS_PREMIUM) {
             } else {
                 const result = await resp.json();
                 const reply = String(result.reply || '').trim();
-                chatHistory.push({ role: 'user', text });
-                chatHistory.push({ role: 'model', text: reply });
-                appendBubble(reply || 'No response received.', 'bot', Boolean(reply));
-                renderSuggestions(result.suggestions);
+                if (isLikelyIncompleteAiReply(reply)) {
+                    appendBubble('The AI response was cut off before it finished. Please try that question again in a moment.', 'bot');
+                    renderSuggestions(buildChatStarters());
+                } else {
+                    const linkedReply = withAnalyticsResourceLinks(text, reply);
+                    chatHistory.push({ role: 'user', text });
+                    chatHistory.push({ role: 'model', text: reply });
+                    appendBubble(linkedReply || 'No response received.', 'bot', Boolean(reply));
+                    renderSuggestions(buildChatStarters());
+                }
             }
         } catch (e) {
             removeTyping();
