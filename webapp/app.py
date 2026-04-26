@@ -2576,6 +2576,55 @@ def _log_feature_view(user_id, feature):
     )
 
 
+def _reset_usage_counters_after_downgrade(user_id):
+    """Clear active General-plan counters after a Premium self-downgrade."""
+    if user_id is None:
+        return
+
+    weekly_cutoff = (
+        datetime.now(timezone.utc) - timedelta(days=7)
+    ).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    daily_cutoff = datetime.now(timezone.utc).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    ).isoformat().replace("+00:00", "Z")
+
+    reset_specs = [
+        ("map", weekly_cutoff),
+        ("analytics", weekly_cutoff),
+        ("comparison", weekly_cutoff),
+        ("ai_answer", daily_cutoff),
+    ]
+    for feature, cutoff in reset_specs:
+        try:
+            _supabase_request(
+                "feature_view_log",
+                method="DELETE",
+                filters={
+                    "user_id": f"eq.{user_id}",
+                    "feature": f"eq.{feature}",
+                    "created_at": f"gte.{cutoff}",
+                },
+            )
+        except Exception:
+            app.logger.warning(
+                "Could not reset %s usage after downgrade for user %s",
+                feature,
+                user_id,
+                exc_info=True,
+            )
+
+
+def _clear_metered_access_session_state():
+    """Remove temporary unlimited-access affordances from the active session."""
+    for key in (
+        MAP_API_ACCESS_SESSION_KEY,
+        "_feature_view_times",
+        ANALYTICS_SCOPE_SESSION_KEY,
+        ANALYTICS_PENDING_FIRST_TOWN_SELECTION_SESSION_KEY,
+    ):
+        session.pop(key, None)
+
+
 def _check_feature_limit(feature):
     """Check if general user has exceeded weekly view limit for a feature.
     Returns (allowed, views_used, views_limit)."""
@@ -4007,6 +4056,39 @@ def upgrade():
         return redirect(url_for("pricing"))
     session["subscription_tier"] = "premium"
     flash("You've been upgraded to Premium! Enjoy unlimited access.", "success")
+    return redirect(url_for("pricing"))
+
+
+@app.route("/downgrade", methods=["POST"])
+@login_required
+def downgrade():
+    user_id = _session_user_id()
+    current_tier = str(session.get("subscription_tier", "general")).strip().lower()
+    if current_tier != "premium":
+        flash("You're already on the General plan.", "warning")
+        return redirect(url_for("pricing"))
+
+    try:
+        _supabase_request(
+            SUPABASE_USERS_TABLE,
+            method="PATCH",
+            filters={"id": f"eq.{user_id}"},
+            payload={"subscription_tier": "general"},
+            prefer="return=minimal",
+        )
+    except SupabaseError:
+        flash("Could not downgrade via Supabase.", "danger")
+        return redirect(url_for("pricing"))
+
+    _reset_usage_counters_after_downgrade(user_id)
+    _clear_metered_access_session_state()
+    session["subscription_tier"] = "general"
+    _log_admin_event(
+        "self_downgrade",
+        user_id,
+        session.get("email", ""),
+    )
+    flash("You've been downgraded to the General plan.", "success")
     return redirect(url_for("pricing"))
 
 
@@ -6620,7 +6702,8 @@ def api_admin_notifications():
                 "suspend": "Account suspended",
                 "reinstate": "Account reinstated",
                 "upgrade": "User upgraded to Premium",
-                "downgrade": "User downgraded to Registered",
+                "downgrade": "User downgraded to General",
+                "self_downgrade": "Member downgraded to General",
                 "review_submit": "Review submitted or updated",
                 "review_user_delete": "Member removed their own review",
                 "review_delete": "Admin deleted a review",
