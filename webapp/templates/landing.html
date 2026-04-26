@@ -2169,57 +2169,6 @@
         </div>
     </section>
 
-    <section class="guest-preview-section" id="prediction-previews">
-        <div class="container">
-            <div class="text-center mb-5 reveal">
-                <span class="badge bg-primary bg-opacity-10 text-primary px-4 py-2 rounded-pill mb-3 fw-bold fs-6">Prediction Previews</span>
-                <h2 class="hero-title mb-3" style="font-size: 3rem;">See the kind of valuations PropSight produces.</h2>
-                <p class="hero-subtitle mx-auto">
-                    Preview cards show common HDB valuation scenarios across different towns and flat types before you create an account.
-                </p>
-            </div>
-
-            <div class="row g-4 justify-content-center">
-                {% for p in landing_prediction_previews %}
-                {% set preview_price = p.get('predicted_price') or p.get('avg_price') or 0 %}
-                <div class="col-md-6 col-lg-4 reveal{% if loop.index == 2 %} stagger-1{% elif loop.index == 3 %} stagger-2{% endif %}">
-                    <div class="guest-preview-card">
-                        <div class="guest-preview-top">
-                            <h3 class="guest-preview-town">{{ p.get('town', 'Singapore') | title }}</h3>
-                            <div class="guest-preview-type">{{ p.get('flat_type', 'HDB Flat') }}</div>
-                        </div>
-                        <div class="guest-preview-body">
-                            <div class="small text-muted fw-bold text-uppercase mb-1" style="letter-spacing:0.08em;">Estimated Valuation</div>
-                            <div class="guest-preview-price">${{ "{:,.0f}".format(preview_price | float) }}</div>
-                            <div class="guest-preview-meta">
-                                <span class="guest-preview-pill">
-                                    <i class="bi bi-buildings"></i>
-                                    {{ p.get('town', 'Town') | title }}
-                                </span>
-                                <span class="guest-preview-pill">
-                                    <i class="bi bi-house"></i>
-                                    {{ p.get('flat_type', 'Flat') }}
-                                </span>
-                                <span class="guest-preview-pill">
-                                    <i class="bi bi-bar-chart"></i>
-                                    {% if p.get('count') %}{{ p.get('count') }} recent signals{% else %}{{ p.get('source_label', 'Preview') }}{% endif %}
-                                </span>
-                            </div>
-                            <p class="text-muted small mb-0 mt-3">
-                                Final estimates update after you enter the exact street, block, floor area, storey, model, and lease year.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-
-            <div class="text-center mt-5 reveal">
-                <a href="/register" class="btn btn-primary-custom btn-custom px-5 py-3">Create Account to Predict</a>
-            </div>
-        </div>
-    </section>
-
     <section class="py-5" id="how-it-works" style="background: white;">
         <div class="container py-5">
             <div class="text-center mb-5 reveal">
@@ -2714,14 +2663,21 @@
             <div class="row g-5 align-items-center">
                 <div class="col-lg-7 reveal">
                     <span class="badge bg-dark px-3 py-2 rounded-pill mb-3 fw-bold">Watch & Learn</span>
-                    <h2 class="hero-title mb-4" style="font-size: 3rem;">See PropSight in Action.</h2>
-                    <p class="text-gray fs-5 mb-5 lh-lg">Discover how our data-driven tools are revolutionising HDB
-                        property analysis in Singapore. Watch our official project demonstration.</p>
+                    <h2 class="hero-title mb-4" style="font-size: 3rem;">Discover PropSight.</h2>
+                    <p class="text-gray fs-5 mb-5 lh-lg">See how PropSight helps people explore smarter HDB insights in
+                        Singapore. Watch our official marketing video.</p>
 
-                    <div class="video-card">
-                        <img src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80"
-                            alt="PropSight Marketing Video" class="video-thumbnail">
-                        <div class="play-button"><i class="bi bi-play-fill ms-1"></i></div>
+                    <div class="video-card ratio ratio-16x9">
+                        <iframe id="media-demo-video" data-video-src="https://www.youtube.com/embed/OPwif__SjJM"
+                            title="PropSight Official Marketing Video"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                            referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+                    </div>
+                    <div class="mt-3">
+                        <button id="media-unmute-btn" class="btn btn-primary px-4 py-2 fw-bold" type="button"
+                            style="display:none;">
+                            <i class="bi bi-volume-up-fill me-2"></i>Play with sound
+                        </button>
                     </div>
                 </div>
 
@@ -3227,6 +3183,46 @@
             });
         }, revealOptions);
         revealElements.forEach(el => revealObserver.observe(el));
+
+        let hasUserInteracted = false;
+        const markUserInteracted = () => {
+            hasUserInteracted = true;
+        };
+        window.addEventListener('pointerdown', markUserInteracted, { once: true });
+        window.addEventListener('keydown', markUserInteracted, { once: true });
+        window.addEventListener('touchstart', markUserInteracted, { once: true, passive: true });
+        window.addEventListener('wheel', markUserInteracted, { once: true, passive: true });
+
+        const mediaSection = document.getElementById('media');
+        const mediaVideo = document.getElementById('media-demo-video');
+        const mediaUnmuteBtn = document.getElementById('media-unmute-btn');
+        if (mediaSection && mediaVideo) {
+            const mediaVideoObserver = new IntersectionObserver((entries, observer) => {
+                entries.forEach(entry => {
+                    if (!entry.isIntersecting) return;
+                    const baseSrc = mediaVideo.getAttribute('data-video-src');
+                    if (!baseSrc) return;
+                    const autoplayParams = hasUserInteracted
+                        ? '?autoplay=1&mute=0&playsinline=1&rel=0'
+                        : '?autoplay=1&mute=1&playsinline=1&rel=0';
+                    mediaVideo.src = baseSrc + autoplayParams;
+                    if (!hasUserInteracted && mediaUnmuteBtn) {
+                        mediaUnmuteBtn.style.display = 'inline-flex';
+                    }
+                    observer.unobserve(entry.target);
+                });
+            }, { threshold: 0.35 });
+            mediaVideoObserver.observe(mediaSection);
+        }
+
+        if (mediaVideo && mediaUnmuteBtn) {
+            mediaUnmuteBtn.addEventListener('click', () => {
+                const baseSrc = mediaVideo.getAttribute('data-video-src');
+                if (!baseSrc) return;
+                mediaVideo.src = baseSrc + '?autoplay=1&mute=0&playsinline=1&rel=0';
+                mediaUnmuteBtn.style.display = 'none';
+            });
+        }
 
         const counters = document.querySelectorAll('.counter');
         let hasCounted = false;
