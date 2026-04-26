@@ -2250,8 +2250,15 @@
                             <i class="bi bi-2-circle-fill fs-2"></i>
                         </div>
                         <h4 class="fw-bold mb-3">AI Engine Analysis</h4>
-                        <p class="text-gray small">Our system scans 150,000+ real HDB transactions and calculates
-                            distance to key amenities via OneMap.</p>
+                        <p class="text-gray small">
+                            Our system scans
+                            {% if landing_stats.total_txns is not none %}
+                            {{ "{:,}".format(landing_stats.total_txns|int) }}+
+                            {% else %}
+                            real
+                            {% endif %}
+                            HDB transactions and calculates distance to key amenities via OneMap.
+                        </p>
                     </div>
                 </div>
 
@@ -2731,8 +2738,14 @@
                         <div>
                             <span class="text-primary small fw-bold text-uppercase"
                                 style="letter-spacing: 1px;">Technical Report</span>
-                            <h5 class="fw-bold mt-2 mb-2" style="font-size: 1.15rem;">How our ML architecture achieves a
-                                6.49% MAPE</h5>
+                            <h5 class="fw-bold mt-2 mb-2" style="font-size: 1.15rem;">
+                                How our ML architecture achieves a
+                                {% if landing_stats.mape is not none %}
+                                {{ "%.2f"|format(landing_stats.mape|float) }}% MAPE
+                                {% else %}
+                                low MAPE
+                                {% endif %}
+                            </h5>
                             <p class="text-gray small mb-0">A deep dive into the predictive analytics engine behind
                                 PropSight.</p>
                         </div>
@@ -2789,7 +2802,13 @@
                             <tr>
                                 <td class="p-4 fw-bold">Valuation Basis</td>
                                 <td class="p-4 text-center text-gray">Asking Prices & Intuition</td>
-                                <td class="p-4 text-center fw-bold bg-light">150,000+ Real Transactions</td>
+                                <td class="p-4 text-center fw-bold bg-light">
+                                    {% if landing_stats.total_txns is not none %}
+                                    {{ "{:,}".format(landing_stats.total_txns|int) }}+ Real Transactions
+                                    {% else %}
+                                    Real Transactions
+                                    {% endif %}
+                                </td>
                             </tr>
                             <tr>
                                 <td class="p-4 fw-bold">Explanation (XAI)</td>
