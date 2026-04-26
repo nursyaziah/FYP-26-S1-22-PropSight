@@ -28,6 +28,7 @@
                         <li class="mb-2"><i class="bi bi-check-lg text-success me-2"></i>Interactive map <span class="text-muted">(3 views/week)</span></li>
                         <li class="mb-2"><i class="bi bi-check-lg text-success me-2"></i>Analytics dashboard <span class="text-muted">(3 views/week)</span></li>
                         <li class="mb-2"><i class="bi bi-check-lg text-success me-2"></i>Comparison tool <span class="text-muted">(3 views/week)</span></li>
+                        <li class="mb-2"><i class="bi bi-check-lg text-success me-2"></i>AI answers <span class="text-muted">({{ ai_daily_limit }} per day)</span></li>
                     </ul>
                     {% if not g.user %}
                     <a href="{{ url_for('register') }}" class="btn btn-outline-primary w-100">Get Started</a>
@@ -55,6 +56,7 @@
                         <span class="text-muted">{{ premium_plan.billing_period }}</span>
                     </div>
                     <ul class="list-unstyled mb-4 flex-grow-1">
+                        <li class="mb-2"><i class="bi bi-check-lg text-success me-2"></i>Unlimited AI answers and chat</li>
                         {% for benefit in premium_plan.benefits %}
                         <li class="mb-2"><i class="bi bi-check-lg text-success me-2"></i>{{ benefit }}</li>
                         {% endfor %}
