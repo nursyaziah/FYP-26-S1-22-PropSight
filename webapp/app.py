@@ -133,10 +133,11 @@ PROJECT_DIR = os.path.dirname(BASE_DIR)
 _PROPSIGHT_DU = (os.environ.get("PROPSIGHT_DISTANCE_UNIT") or "km").strip().lower()
 PROPSIGHT_DISTANCE_UNIT = _PROPSIGHT_DU if _PROPSIGHT_DU in ("km", "m") else "km"
 
-# Announced upcoming MRT stations (not yet open as of 2025). Coordinates are approximate.
+# Announced upcoming MRT stations (not yet open as of 2026). Coordinates are approximate.
 _UPCOMING_MRT_STATIONS = [
-    # Thomson-East Coast Line Phase 5
-    {"name": "Bedok South", "line": "TEL", "year": 2025, "lat": 1.3234, "lng": 103.9339},
+    # Thomson-East Coast Line Stage 5 (expected 2026)
+    {"name": "Bedok South", "line": "TEL", "year": 2026, "lat": 1.3234, "lng": 103.9339},
+    {"name": "Sungei Bedok", "line": "TEL/DTL", "year": 2026, "lat": 1.3204, "lng": 103.9572},
     # Jurong Region Line (expected ~2027–2029)
     {"name": "Gek Poh", "line": "JRL", "year": 2027, "lat": 1.3440, "lng": 103.6950},
     {"name": "Tawas", "line": "JRL", "year": 2027, "lat": 1.3457, "lng": 103.6858},
@@ -349,7 +350,17 @@ def _env_int(name, default):
         return default
 
 
+def _env_float(name, default):
+    try:
+        return float(os.environ.get(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
 PREMIUM_DAILY_COMPARISON_AI_LIMIT = _env_int("PREMIUM_DAILY_COMPARISON_AI_LIMIT", 10)
+MODEL_STALE_AFTER_DAYS = _env_int("MODEL_STALE_AFTER_DAYS", 45)
+SORA_TTL_SECONDS = max(300, _env_int("SORA_TTL_SECONDS", 6 * 60 * 60))
+SORA_FALLBACK_3M = _env_float("SORA_FALLBACK_3M", 2.5)
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY = (
@@ -378,6 +389,15 @@ MATURE_ESTATES = {
     "MARINE PARADE", "PASIR RIS", "QUEENSTOWN", "SERANGOON", "TAMPINES",
     "TOA PAYOH",
 }
+
+KNOWN_HDB_TOWNS = sorted({
+    "ANG MO KIO", "BEDOK", "BISHAN", "BUKIT BATOK", "BUKIT MERAH",
+    "BUKIT PANJANG", "BUKIT TIMAH", "CENTRAL AREA", "CHOA CHU KANG",
+    "CLEMENTI", "GEYLANG", "HOUGANG", "JURONG EAST", "JURONG WEST",
+    "KALLANG/WHAMPOA", "LIM CHU KANG", "MARINE PARADE", "PASIR RIS",
+    "PUNGGOL", "QUEENSTOWN", "SEMBAWANG", "SENGKANG", "SERANGOON",
+    "TAMPINES", "TOA PAYOH", "WOODLANDS", "YISHUN",
+})
 
 FLAT_TYPE_ORDINAL = {
     "1 Room": 1, "2 Room": 2, "3 Room": 3, "4 Room": 4,
@@ -548,6 +568,9 @@ def _enrich_prediction_result(predicted_price, prediction_year=None, result=None
     enriched["mape"] = mape_display
     performance = (globals().get("ARTEFACTS") or {}).get("performance") or {}
     enriched.setdefault("model_trained_at", performance.get("model_trained_at"))
+    enriched.setdefault("model_age_days", performance.get("model_age_days"))
+    enriched.setdefault("model_stale", performance.get("model_stale"))
+    enriched.setdefault("model_stale_after_days", performance.get("model_stale_after_days"))
     return enriched
 
 
@@ -590,18 +613,26 @@ def _manifest_split_window(manifest, split_name):
     return _year_window_label(start_year, end_year)
 
 
-def _format_model_trained_at(run_at_str):
-    """Return a human-readable SGT datetime string from manifest run_at ISO string."""
+def _parse_model_run_at(run_at_str):
     if not run_at_str:
         return None
     try:
-        from datetime import timezone, timedelta
-        import datetime as _dt
-        dt = _dt.datetime.fromisoformat(run_at_str)
-        sgt = dt.astimezone(timezone(timedelta(hours=8)))
-        return sgt.strftime("%-d %b %Y, %-I:%M %p SGT")
+        raw = str(run_at_str).strip()
+        normalized = f"{raw[:-1]}+00:00" if raw.endswith("Z") else raw
+        dt = datetime.fromisoformat(normalized)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
     except Exception:
         return None
+
+
+def _format_model_trained_at(run_at_str):
+    """Return a human-readable SGT datetime string from manifest run_at ISO string."""
+    dt = _parse_model_run_at(run_at_str)
+    if dt is None:
+        return None
+    return dt.astimezone(SGT).strftime("%-d %b %Y, %-I:%M %p SGT")
 
 
 def _build_model_performance(metrics, manifest, serving_model_key):
@@ -610,6 +641,14 @@ def _build_model_performance(metrics, manifest, serving_model_key):
     serving_results = model_results.get(serving_model_key, {}) or {}
     test_metrics = serving_results.get("test", {}) or {}
     future_metrics = serving_results.get("future_holdout", {}) or {}
+    trained_at_utc = _parse_model_run_at(manifest.get("run_at"))
+    model_age_days = None
+    if trained_at_utc is not None:
+        model_age_days = max(0, (datetime.now(timezone.utc) - trained_at_utc).days)
+    model_is_stale = (
+        model_age_days is not None
+        and model_age_days > MODEL_STALE_AFTER_DAYS
+    )
 
     # Prefer winner["test_mape"] when serving the winner model — it reflects
     # the post-refit value (train+val refit), which is more accurate than the
@@ -657,6 +696,10 @@ def _build_model_performance(metrics, manifest, serving_model_key):
         "test_window": _manifest_split_window(manifest, "test"),
         "future_holdout_window": _manifest_split_window(manifest, "future_holdout"),
         "model_trained_at": _format_model_trained_at(manifest.get("run_at")),
+        "model_trained_at_iso": trained_at_utc.isoformat() if trained_at_utc else None,
+        "model_age_days": model_age_days,
+        "model_stale": model_is_stale,
+        "model_stale_after_days": MODEL_STALE_AFTER_DAYS,
     }
 
 
@@ -1015,33 +1058,75 @@ def _winner_metrics_snapshot(metrics):
 
 
 # ---------------------------------------------------------------------------
-# SORA rate — fetched once at startup, used for all predictions
+# SORA rate — refreshed periodically so long-lived app processes do not drift
 # ---------------------------------------------------------------------------
 
-def _fetch_current_sora() -> float:
+def _fetch_current_sora_from_api() -> float:
     """Fetch the most recent 3-month compounded SORA from MAS API."""
     _MAS_SORA_URL = (
         "https://eservices.mas.gov.sg/api/action/datastore/search.json"
         "?resource_id=9a0bf149-308c-4bd2-832d-76c8e6cb47ed&limit=30&sort=end_of_day+desc"
     )
-    try:
-        req = urllib_request.Request(
-            _MAS_SORA_URL,
-            headers={"User-Agent": "PropSight/1.0 (HDB Resale Price Prediction)"},
-        )
-        with urllib_request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        records = data.get("result", {}).get("records", [])
-        for rec in records:
-            val = rec.get("comp_sora_3m")
-            if val not in (None, "", "-"):
-                return float(val)
-    except Exception:
-        pass
-    return 2.5
+    req = urllib_request.Request(
+        _MAS_SORA_URL,
+        headers={"User-Agent": "PropSight/1.0 (HDB Resale Price Prediction)"},
+    )
+    with urllib_request.urlopen(req, timeout=10) as resp:
+        data = json.loads(resp.read().decode("utf-8-sig"))
+    records = data.get("result", {}).get("records", [])
+    for rec in records:
+        val = rec.get("comp_sora_3m")
+        if val not in (None, "", "-"):
+            return float(val)
+    raise ValueError("MAS SORA response did not include comp_sora_3m")
 
 
-CURRENT_SORA_3M: float = _fetch_current_sora()
+CURRENT_SORA_3M: float | None = None
+_SORA_LOCK = threading.Lock()
+_SORA_LAST_REFRESH_MONO = 0.0
+_SORA_UPDATED_AT = None
+_SORA_SOURCE = "uninitialized"
+_SORA_LAST_ERROR = None
+
+
+def _refresh_current_sora(force=False) -> float:
+    global CURRENT_SORA_3M, _SORA_LAST_REFRESH_MONO, _SORA_UPDATED_AT
+    global _SORA_SOURCE, _SORA_LAST_ERROR
+
+    now_mono = _time_mod.monotonic()
+    with _SORA_LOCK:
+        if (
+            not force
+            and CURRENT_SORA_3M is not None
+            and now_mono - _SORA_LAST_REFRESH_MONO < SORA_TTL_SECONDS
+        ):
+            return float(CURRENT_SORA_3M)
+
+        try:
+            CURRENT_SORA_3M = _fetch_current_sora_from_api()
+            _SORA_SOURCE = "mas"
+            _SORA_LAST_ERROR = None
+            _SORA_UPDATED_AT = datetime.now(timezone.utc)
+        except Exception as exc:
+            _SORA_LAST_ERROR = str(exc)
+            if CURRENT_SORA_3M is None:
+                CURRENT_SORA_3M = SORA_FALLBACK_3M
+                _SORA_SOURCE = "fallback"
+                _SORA_UPDATED_AT = datetime.now(timezone.utc)
+            else:
+                _SORA_SOURCE = "stale_mas"
+            app.logger.warning("Could not refresh MAS SORA; using %s: %s", _SORA_SOURCE, exc)
+        finally:
+            _SORA_LAST_REFRESH_MONO = now_mono
+
+        return float(CURRENT_SORA_3M)
+
+
+def _current_sora_3m() -> float:
+    return _refresh_current_sora(force=False)
+
+
+_refresh_current_sora(force=True)
 
 
 def _serving_feature_cols():
@@ -1099,7 +1184,7 @@ def _supabase_request(table, method="GET", filters=None, payload=None, prefer=No
 
     req = urllib_request.Request(url, data=data, headers=headers, method=method)
     try:
-        with urllib_request.urlopen(req) as resp:
+        with urllib_request.urlopen(req, timeout=10) as resp:
             raw = resp.read().decode("utf-8")
             if not raw:
                 return None
@@ -1107,6 +1192,8 @@ def _supabase_request(table, method="GET", filters=None, payload=None, prefer=No
     except error.HTTPError as exc:
         details = exc.read().decode("utf-8")
         raise SupabaseError(details or f"Supabase request failed with {exc.code}") from exc
+    except (error.URLError, SocketTimeout, OSError) as exc:
+        raise SupabaseError(f"Supabase request failed: {exc}") from exc
 
 
 def _supabase_count(table, filters=None):
@@ -1123,7 +1210,7 @@ def _supabase_count(table, filters=None):
         method="GET",
     )
     try:
-        with urllib_request.urlopen(req) as resp:
+        with urllib_request.urlopen(req, timeout=10) as resp:
             content_range = resp.headers.get("Content-Range", "")
             if "/" not in content_range:
                 return 0
@@ -1132,6 +1219,8 @@ def _supabase_count(table, filters=None):
     except error.HTTPError as exc:
         details = exc.read().decode("utf-8")
         raise SupabaseError(details or f"Supabase count failed with {exc.code}") from exc
+    except (error.URLError, SocketTimeout, OSError) as exc:
+        raise SupabaseError(f"Supabase count failed: {exc}") from exc
 
 
 def _admin_bulk_prediction_counters():
@@ -1271,12 +1360,14 @@ def _supabase_auth(path, method="POST", payload=None, access_token=None):
     data = json.dumps(payload).encode() if payload is not None else None
     req = urllib_request.Request(url, data=data, headers=headers, method=method)
     try:
-        with urllib_request.urlopen(req) as resp:
+        with urllib_request.urlopen(req, timeout=10) as resp:
             raw = resp.read().decode()
             return json.loads(raw) if raw else None
     except error.HTTPError as exc:
         details = exc.read().decode()
         raise SupabaseError(details or f"Auth API failed with {exc.code}") from exc
+    except (error.URLError, SocketTimeout, OSError) as exc:
+        raise SupabaseError(f"Auth API failed: {exc}") from exc
 
 
 
@@ -1293,12 +1384,14 @@ def _supabase_auth_update_user(access_token, payload):
     data = json.dumps(payload).encode()
     req = urllib_request.Request(url, data=data, headers=headers, method="PUT")
     try:
-        with urllib_request.urlopen(req) as resp:
+        with urllib_request.urlopen(req, timeout=10) as resp:
             raw = resp.read().decode()
             return json.loads(raw) if raw else None
     except error.HTTPError as exc:
         details = exc.read().decode()
         raise SupabaseError(details or f"Auth API failed with {exc.code}") from exc
+    except (error.URLError, SocketTimeout, OSError) as exc:
+        raise SupabaseError(f"Auth API failed: {exc}") from exc
 
 
 def _gemini_request(url, body_dict, timeout=25):
@@ -1373,14 +1466,17 @@ def _get_daily_feature_count(user_id, feature):
     if user_id is None:
         return 0
     cutoff = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat().replace("+00:00", "Z")
-    rows = _supabase_request(
-        "feature_view_log",
-        filters={
-            "user_id": f"eq.{user_id}",
-            "feature": f"eq.{feature}",
-            "created_at": f"gte.{cutoff}",
-        },
-    ) or []
+    try:
+        rows = _supabase_request(
+            "feature_view_log",
+            filters={
+                "user_id": f"eq.{user_id}",
+                "feature": f"eq.{feature}",
+                "created_at": f"gte.{cutoff}",
+            },
+        ) or []
+    except SupabaseError:
+        return 0
     return len(rows)
 
 
@@ -2481,14 +2577,98 @@ def _get_lease_year_range_data(town, street_name="", block=""):
     return _default_lease_year_range()
 
 
-TOWNS = _get_towns()
-FLAT_MODELS = _get_flat_models()
+def _fallback_flat_models():
+    return sorted({
+        model
+        for models in FLAT_MODELS_BY_TYPE.values()
+        for model in models
+        if model
+    })
+
+
+def _town_coords_from_distances(distances):
+    return {
+        town: {"lat": meta["avg_lat"], "lng": meta["avg_lng"]}
+        for town, meta in (distances or {}).items()
+        if meta.get("avg_lat") is not None and meta.get("avg_lng") is not None
+    }
+
+
+TOWNS = _get_towns() or list(KNOWN_HDB_TOWNS)
+FLAT_MODELS = _get_flat_models() or _fallback_flat_models()
 TOWN_DISTANCES = _get_town_avg_distances()
-TOWN_COORDS = {
-    town: {"lat": meta["avg_lat"], "lng": meta["avg_lng"]}
-    for town, meta in TOWN_DISTANCES.items()
-    if meta.get("avg_lat") and meta.get("avg_lng")
-}
+TOWN_COORDS = _town_coords_from_distances(TOWN_DISTANCES)
+
+_REFERENCE_CACHE_LOCK = threading.Lock()
+_REFERENCE_CACHE_TTL_SEC = max(60, _env_int("REFERENCE_CACHE_TTL_SECONDS", 5 * 60))
+_REFERENCE_CACHE_RETRY_EMPTY_SEC = 30.0
+_reference_cache_last_check_mono = -_REFERENCE_CACHE_RETRY_EMPTY_SEC
+
+
+def _reference_cache_is_complete():
+    return bool(TOWNS and FLAT_MODELS and TOWN_DISTANCES and TOWN_COORDS)
+
+
+def _refresh_reference_caches(force=False):
+    """Refresh dropdown/distance caches after transient Supabase startup failures."""
+    global TOWNS, FLAT_MODELS, TOWN_DISTANCES, TOWN_COORDS
+    global _reference_cache_last_check_mono
+
+    now = _time_mod.monotonic()
+    interval = (
+        _REFERENCE_CACHE_TTL_SEC
+        if _reference_cache_is_complete()
+        else _REFERENCE_CACHE_RETRY_EMPTY_SEC
+    )
+    if not force and now - _reference_cache_last_check_mono < interval:
+        return False
+
+    with _REFERENCE_CACHE_LOCK:
+        now = _time_mod.monotonic()
+        interval = (
+            _REFERENCE_CACHE_TTL_SEC
+            if _reference_cache_is_complete()
+            else _REFERENCE_CACHE_RETRY_EMPTY_SEC
+        )
+        if not force and now - _reference_cache_last_check_mono < interval:
+            return False
+
+        _reference_cache_last_check_mono = now
+        refreshed = False
+
+        towns = _get_towns()
+        if towns and towns != TOWNS:
+            TOWNS = towns
+            refreshed = True
+        elif not TOWNS:
+            TOWNS = list(KNOWN_HDB_TOWNS)
+
+        flat_models = _get_flat_models() or _fallback_flat_models()
+        if flat_models and flat_models != FLAT_MODELS:
+            FLAT_MODELS = flat_models
+            refreshed = True
+
+        town_distances = _get_town_avg_distances()
+        if town_distances:
+            town_coords = _town_coords_from_distances(town_distances)
+            if town_distances != TOWN_DISTANCES:
+                TOWN_DISTANCES = town_distances
+                refreshed = True
+            if town_coords != TOWN_COORDS:
+                TOWN_COORDS = town_coords
+                refreshed = True
+
+        return refreshed
+
+
+@app.before_request
+def _refresh_reference_caches_periodically():
+    if (request.path or "").startswith("/static"):
+        return
+    try:
+        _refresh_reference_caches(force=False)
+    except Exception:
+        app.logger.warning("Could not refresh reference caches", exc_info=True)
 
 
 # ---------------------------------------------------------------------------
@@ -2564,16 +2744,22 @@ ANALYTICS_PENDING_FIRST_TOWN_SELECTION_SESSION_KEY = "_analytics_pending_first_t
 
 def _get_weekly_view_count(user_id, feature):
     """Count views of a feature by user in the current week."""
-    return len(_get_supabase_feature_view_rows(user_id, feature))
+    try:
+        return len(_get_supabase_feature_view_rows(user_id, feature))
+    except SupabaseError:
+        return 0
 
 
 def _log_feature_view(user_id, feature):
     """Record a feature view."""
-    _supabase_request(
-        "feature_view_log",
-        method="POST",
-        payload={"user_id": user_id, "feature": feature},
-    )
+    try:
+        _supabase_request(
+            "feature_view_log",
+            method="POST",
+            payload={"user_id": user_id, "feature": feature},
+        )
+    except SupabaseError as exc:
+        app.logger.warning("Could not log feature view %s for user %s: %s", feature, user_id, exc)
 
 
 def _reset_usage_counters_after_downgrade(user_id):
@@ -2987,7 +3173,7 @@ def _build_scaled_feature_df(town, flat_type, flat_model, floor_area, storey_ran
         "town_txn_volume_3m": rolling.get("town_txn_volume_3m", 0.0),
         "price_momentum_3m": rolling.get("price_momentum_3m", 0.0),
         "national_median_psf_3m": rolling.get("national_median_psf_3m", 0.0),
-        "sora_3m": CURRENT_SORA_3M,
+        "sora_3m": _current_sora_3m(),
     }
 
     df = pd.DataFrame([raw])
@@ -4840,7 +5026,11 @@ def save_prediction():
     # Enforce save limit for general users
     tier = session.get("subscription_tier", "general")
     if tier != "premium":
-        existing = _get_saved_predictions(session["user_id"])
+        try:
+            existing = _get_saved_predictions(session["user_id"])
+        except SupabaseError:
+            flash("Could not check your saved prediction limit right now.", "danger")
+            return redirect(url_for("my_predictions"))
         if len(existing) >= 3:
             flash("Free users can save up to 3 predictions. Upgrade to Premium for unlimited saves.", "warning")
             return redirect(url_for("my_predictions"))

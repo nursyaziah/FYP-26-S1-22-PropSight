@@ -4,7 +4,8 @@ pandas==2.3.3
 python-dotenv==1.2.2
 scikit-learn==1.8.0
 lightgbm==4.6.0
-shap
-gunicorn
-pyarrow
-catboost
+catboost==1.2.10
+xgboost==3.2.0
+shap==0.51.0
+gunicorn==23.0.0
+pyarrow==23.0.1

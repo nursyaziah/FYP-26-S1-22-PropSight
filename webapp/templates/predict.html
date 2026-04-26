@@ -1168,6 +1168,9 @@ body > nav, body > footer, body > header {
         {% if result.model_trained_at %}
         <div class="price-trained">Model trained {{ result.model_trained_at }}</div>
         {% endif %}
+        {% if result.model_stale %}
+        <div class="price-trained">Model refresh recommended: last trained {{ result.model_age_days }} days ago.</div>
+        {% endif %}
 
         <div class="price-disclaimer">
           <i class="bi bi-exclamation-triangle-fill"></i>

@@ -278,28 +278,39 @@ def run_supabase_data_sync() -> None:
         print(f"  WARNING: Supabase data sync skipped after external error: {exc}")
 
 
+class ModelPromotionBlocked(RuntimeError):
+    """Raised when a new model should not be promoted to production."""
+
+
+def _skip_model_version_sync(message: str) -> None:
+    if _env_flag("HDB_STRICT_EXTERNAL_STEPS"):
+        raise RuntimeError(message)
+    print(f"  WARNING: {message}")
+
+
 def run_supabase_model_version_sync(
     trigger_label: str = "scripts/sync_to_supabase.py",
+    dry_run: bool = False,
 ) -> None:
     supabase_db_url = _load_project_env()
     if not supabase_db_url:
-        print("  WARNING: SUPABASE_DB_URL not set in .env — skipping model_versions update.")
+        _skip_model_version_sync("SUPABASE_DB_URL not set in .env; skipping model_versions update.")
         return
 
     try:
         import psycopg2
     except ImportError:
-        print("  ERROR: psycopg2 not installed. Skipping model_versions update.")
+        _skip_model_version_sync("psycopg2 not installed; skipping model_versions update.")
         return
 
     run_dir = get_latest_run_dir()
     if run_dir is None:
-        print("  Could not find latest run directory — skipping model_versions update.")
+        _skip_model_version_sync("Could not find latest run directory; skipping model_versions update.")
         return
 
     metrics_path = os.path.join(run_dir, "metrics.json")
     if not os.path.exists(metrics_path):
-        print(f"  No metrics.json in {run_dir} — skipping model_versions update.")
+        _skip_model_version_sync(f"No metrics.json in {run_dir}; skipping model_versions update.")
         return
 
     with open(metrics_path) as f:
@@ -326,13 +337,18 @@ def run_supabase_model_version_sync(
             if current_row and current_row[0] is not None:
                 current_mape = float(current_row[0])
                 if test_mape > current_mape * (1 + mape_regression_threshold):
-                    print(
+                    message = (
                         f"  ABORT: New model MAPE ({test_mape:.4f}%) is more than "
                         f"{mape_regression_threshold * 100:.0f}% worse than the deployed model "
                         f"({current_mape:.4f}%). Skipping deployment to protect production."
                     )
-                    pg_conn.close()
-                    return
+                    print(message)
+                    raise ModelPromotionBlocked(message)
+
+        if dry_run:
+            metric_label = f"{float(test_mape):.4f}%" if test_mape is not None else "unknown MAPE"
+            print(f"  model promotion guard passed: {winner_name} ({metric_label})")
+            return
 
         pg_cur.execute("UPDATE model_versions SET is_active = FALSE WHERE is_active = TRUE")
         pg_cur.execute(
@@ -351,6 +367,8 @@ def run_supabase_model_version_sync(
         )
         pg_conn.commit()
         print(f"  model_versions updated: {winner_name} (active)")
+    except ModelPromotionBlocked:
+        raise
     except Exception as exc:
         if _env_flag("HDB_STRICT_EXTERNAL_STEPS"):
             raise
