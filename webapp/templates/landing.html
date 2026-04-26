@@ -1877,6 +1877,117 @@
             letter-spacing: 1px;
         }
 
+        .guest-preview-section {
+            background:
+                radial-gradient(circle at 12% 8%, rgba(37, 99, 235, 0.08), transparent 34%),
+                linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+            padding: 92px 0;
+        }
+
+        .guest-preview-card {
+            height: 100%;
+            border: 1px solid rgba(15, 23, 42, 0.08);
+            border-radius: 24px;
+            background: rgba(255, 255, 255, 0.88);
+            box-shadow: 0 20px 44px -28px rgba(15, 23, 42, 0.34);
+            overflow: hidden;
+            transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+        }
+
+        .guest-preview-card:hover {
+            transform: translateY(-6px);
+            border-color: rgba(37, 99, 235, 0.28);
+            box-shadow: 0 28px 60px -30px rgba(37, 99, 235, 0.38);
+        }
+
+        .guest-preview-top {
+            padding: 18px 20px;
+            background: linear-gradient(145deg, #0f172a 0%, #1e293b 100%);
+            color: #fff;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .guest-preview-top::after {
+            content: "";
+            position: absolute;
+            inset: auto -30px -44px auto;
+            width: 132px;
+            height: 132px;
+            border-radius: 999px;
+            background: rgba(37, 99, 235, 0.26);
+        }
+
+        .guest-preview-town {
+            margin: 0;
+            position: relative;
+            z-index: 1;
+            font-weight: 800;
+            font-size: 1.2rem;
+        }
+
+        .guest-preview-type {
+            position: relative;
+            z-index: 1;
+            color: rgba(226, 232, 240, 0.9);
+            font-size: 0.85rem;
+        }
+
+        .guest-preview-body {
+            padding: 22px 20px 20px;
+        }
+
+        .guest-preview-price {
+            font-size: 1.8rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            color: var(--primary);
+        }
+
+        .guest-preview-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 14px;
+        }
+
+        .guest-preview-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            border-radius: 999px;
+            padding: 5px 9px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            color: #334155;
+            background: #f1f5f9;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+        }
+
+        .landing-faq-section {
+            background: #ffffff;
+            padding: 88px 0;
+        }
+
+        .landing-faq-section .accordion-item {
+            border: 1px solid rgba(15, 23, 42, 0.08);
+            border-radius: 18px;
+            overflow: hidden;
+            margin-bottom: 14px;
+            box-shadow: 0 16px 36px -30px rgba(15, 23, 42, 0.25);
+        }
+
+        .landing-faq-section .accordion-button {
+            font-weight: 800;
+            color: #0f172a;
+            padding: 18px 20px;
+        }
+
+        .landing-faq-section .accordion-button:not(.collapsed) {
+            color: var(--primary);
+            background: rgba(37, 99, 235, 0.05);
+        }
+
         footer {
             background: var(--light);
             border-top: 1px solid var(--border);
@@ -1902,6 +2013,7 @@
                     <li class="nav-item"><a class="nav-link fw-600 px-3" href="#platform">Platform</a></li>
                     <li class="nav-item"><a class="nav-link fw-600 px-3" href="#xai">Explainability</a></li>
                     <li class="nav-item"><a class="nav-link fw-600 px-3" href="#comparison">Compare</a></li>
+                    <li class="nav-item"><a class="nav-link fw-600 px-3" href="#faq">FAQ</a></li>
                     <li class="nav-item"><a class="nav-link fw-600 px-3" href="#media">Research</a></li>
                     <li class="nav-item ms-lg-3">
                         <a href="/home" class="btn btn-primary-custom btn-custom px-4 shadow-sm fw-bold">Check My
@@ -2053,6 +2165,57 @@
                         {% if landing_stats.last_updated %}{{ landing_stats.last_updated }}{% else %}—{% endif %}</span>
                     <span id="landing-meta-api"><i class="bi bi-database-fill"></i> API: {{ landing_stats.data_sources }}</span>
                 </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="guest-preview-section" id="prediction-previews">
+        <div class="container">
+            <div class="text-center mb-5 reveal">
+                <span class="badge bg-primary bg-opacity-10 text-primary px-4 py-2 rounded-pill mb-3 fw-bold fs-6">Prediction Previews</span>
+                <h2 class="hero-title mb-3" style="font-size: 3rem;">See the kind of valuations PropSight produces.</h2>
+                <p class="hero-subtitle mx-auto">
+                    Preview cards show common HDB valuation scenarios across different towns and flat types before you create an account.
+                </p>
+            </div>
+
+            <div class="row g-4 justify-content-center">
+                {% for p in landing_prediction_previews %}
+                {% set preview_price = p.get('predicted_price') or p.get('avg_price') or 0 %}
+                <div class="col-md-6 col-lg-4 reveal{% if loop.index == 2 %} stagger-1{% elif loop.index == 3 %} stagger-2{% endif %}">
+                    <div class="guest-preview-card">
+                        <div class="guest-preview-top">
+                            <h3 class="guest-preview-town">{{ p.get('town', 'Singapore') | title }}</h3>
+                            <div class="guest-preview-type">{{ p.get('flat_type', 'HDB Flat') }}</div>
+                        </div>
+                        <div class="guest-preview-body">
+                            <div class="small text-muted fw-bold text-uppercase mb-1" style="letter-spacing:0.08em;">Estimated Valuation</div>
+                            <div class="guest-preview-price">${{ "{:,.0f}".format(preview_price | float) }}</div>
+                            <div class="guest-preview-meta">
+                                <span class="guest-preview-pill">
+                                    <i class="bi bi-buildings"></i>
+                                    {{ p.get('town', 'Town') | title }}
+                                </span>
+                                <span class="guest-preview-pill">
+                                    <i class="bi bi-house"></i>
+                                    {{ p.get('flat_type', 'Flat') }}
+                                </span>
+                                <span class="guest-preview-pill">
+                                    <i class="bi bi-bar-chart"></i>
+                                    {% if p.get('count') %}{{ p.get('count') }} recent signals{% else %}{{ p.get('source_label', 'Preview') }}{% endif %}
+                                </span>
+                            </div>
+                            <p class="text-muted small mb-0 mt-3">
+                                Final estimates update after you enter the exact street, block, floor area, storey, model, and lease year.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="text-center mt-5 reveal">
+                <a href="/register" class="btn btn-primary-custom btn-custom px-5 py-3">Create Account to Predict</a>
             </div>
         </div>
     </section>
@@ -2674,6 +2837,93 @@
         </div>
     </section>
 
+    <section class="landing-faq-section" id="faq">
+        <div class="container">
+            <div class="text-center mb-5 reveal">
+                <span class="badge bg-primary bg-opacity-10 text-primary px-4 py-2 rounded-pill mb-3 fw-bold fs-6">FAQ</span>
+                <h2 class="hero-title mb-3" style="font-size: 3rem;">Frequently Asked Questions</h2>
+                <p class="hero-subtitle mx-auto">
+                    Understand PropSight's data, accuracy, and intended use before registering.
+                </p>
+            </div>
+
+            <div class="accordion reveal" id="landingFaqAccordion">
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#landingFaq1">
+                            How accurate are the price predictions?
+                        </button>
+                    </h2>
+                    <div id="landingFaq1" class="accordion-collapse collapse" data-bs-parent="#landingFaqAccordion">
+                        <div class="accordion-body text-gray">
+                            {% if active_model_performance and active_model_performance.test_mape_display is not none %}
+                            The active {{ active_model_performance.label }} model records a test MAPE of {{ active_model_performance.test_mape_display }}%
+                            {% if active_model_performance.test_window %}on the {{ active_model_performance.test_window }} evaluation window{% else %}on unseen test data{% endif %}.
+                            Treat every estimate as a data-driven benchmark, not a guaranteed valuation.
+                            {% else %}
+                            PropSight uses the active model artefacts loaded by the platform. Accuracy is shown when the current deployment exposes a published MAPE summary.
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#landingFaq2">
+                            What data powers PropSight?
+                        </button>
+                    </h2>
+                    <div id="landingFaq2" class="accordion-collapse collapse" data-bs-parent="#landingFaqAccordion">
+                        <div class="accordion-body text-gray">
+                            PropSight uses HDB resale transaction records, flat attributes, lease details, and geospatial amenity context. This deployment references
+                            {% if landing_stats.total_txns is not none %}{{ "{:,}".format(landing_stats.total_txns | int) }}{% else %}the available{% endif %}
+                            transactions across Singapore HDB towns.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#landingFaq3">
+                            Is PropSight financial or property advice?
+                        </button>
+                    </h2>
+                    <div id="landingFaq3" class="accordion-collapse collapse" data-bs-parent="#landingFaqAccordion">
+                        <div class="accordion-body text-gray">
+                            No. PropSight is an academic decision-support and second-opinion tool. Use it alongside official valuations, agent guidance, and your own financial planning.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#landingFaq4">
+                            Why do I need an account?
+                        </button>
+                    </h2>
+                    <div id="landingFaq4" class="accordion-collapse collapse" data-bs-parent="#landingFaqAccordion">
+                        <div class="accordion-body text-gray">
+                            Guests can review the overview, FAQ, pricing, map teaser, and prediction previews. Registered users unlock predictions, saved valuations, maps, analytics, comparison, and AI explanations.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#landingFaq5">
+                            What should I do if the estimate looks unusual?
+                        </button>
+                    </h2>
+                    <div id="landingFaq5" class="accordion-collapse collapse" data-bs-parent="#landingFaqAccordion">
+                        <div class="accordion-body text-gray">
+                            Check the street, block, flat model, storey, floor area, and lease year. Then compare against recent similar transactions and analytics charts to understand whether the estimate is driven by property attributes or market context.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <section class="pricing-section" id="pricing">
         <div class="container">
             <div class="text-center mb-5 pb-4 reveal">
@@ -2695,10 +2945,10 @@
                         <ul class="check-list mt-5">
                             <li><i class="bi bi-check-circle-fill text-dark opacity-25"></i> Unlimited Price Predictions
                             </li>
-                            <li><i class="bi bi-check-circle-fill text-dark opacity-25"></i> Save up to 3 models</li>
+                            <li><i class="bi bi-check-circle-fill text-dark opacity-25"></i> Save up to 3 predictions</li>
                             <li><i class="bi bi-check-circle-fill text-dark opacity-25"></i> 3 Map / Analytics views per
                                 week</li>
-                            <li><i class="bi bi-check-circle-fill text-dark opacity-25"></i> Compare up to 3 properties
+                            <li><i class="bi bi-check-circle-fill text-dark opacity-25"></i> Compare up to 2 properties
                             </li>
                             <li><i class="bi bi-check-circle-fill text-dark opacity-25"></i> {{ ai_daily_limit }} AI answers per day</li>
                         </ul>

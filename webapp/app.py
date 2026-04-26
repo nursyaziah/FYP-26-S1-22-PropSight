@@ -262,7 +262,7 @@ _DEFAULT_SUBSCRIPTION_PLAN = {
         "billing_period": "/month",
         "description": "Unlock the full power of PropSight",
         "benefits": [
-            "Price predictions",
+            "Unlimited price predictions",
             "Unlimited saved predictions",
             "Unlimited map access",
             "Unlimited analytics access",
@@ -4136,6 +4136,65 @@ def _get_popular_predictions(limit=3):
         return []
 
 
+def _get_landing_prediction_previews(limit=3):
+    """Guest-facing preview cards for the public landing page."""
+    previews = _get_popular_predictions(limit)
+    seen = {
+        (item.get("town"), item.get("flat_type"))
+        for item in previews
+        if item.get("town") and item.get("flat_type")
+    }
+
+    if len(previews) < limit:
+        district_rows = sorted(
+            [dict(row) for row in _get_district_comparison_data() if row.get("town")],
+            key=lambda row: _coerce_int(row.get("txn_count"), 0) or 0,
+            reverse=True,
+        )
+        for town_row in district_rows:
+            town = town_row.get("town")
+            flat_rows = sorted(
+                [dict(row) for row in _get_flat_type_breakdown_data(town) if row.get("flat_type")],
+                key=lambda row: _coerce_int(row.get("txn_count"), 0) or 0,
+                reverse=True,
+            )
+            for flat_row in flat_rows:
+                key = (town, flat_row.get("flat_type"))
+                if key in seen:
+                    continue
+                avg_price = _coerce_float(flat_row.get("avg_price"))
+                if avg_price is None or avg_price <= 0:
+                    continue
+                previews.append({
+                    "town": town,
+                    "flat_type": flat_row.get("flat_type"),
+                    "avg_price": round(avg_price),
+                    "count": _coerce_int(flat_row.get("txn_count"), 0) or 0,
+                    "source_label": "Recent market preview",
+                })
+                seen.add(key)
+                break
+            if len(previews) >= limit:
+                break
+
+    if len(previews) < limit:
+        fallback_cards = [
+            {"town": "Bishan", "flat_type": "4 Room", "avg_price": 712000, "count": 0},
+            {"town": "Tampines", "flat_type": "5 Room", "avg_price": 650000, "count": 0},
+            {"town": "Yishun", "flat_type": "3 Room", "avg_price": 360000, "count": 0},
+        ]
+        for card in fallback_cards:
+            key = (card["town"], card["flat_type"])
+            if key in seen:
+                continue
+            previews.append({**card, "source_label": "Sample preview"})
+            seen.add(key)
+            if len(previews) >= limit:
+                break
+
+    return previews[:limit]
+
+
 def _build_town_coords_lookup():
     """Town -> coordinates lookup used by mini-map previews."""
     lookup = {}
@@ -4175,9 +4234,18 @@ def landing():
     """Public marketing landing page."""
     plan_config = _load_subscription_plan_config()
     premium = plan_config["premium"]
+    try:
+        town_coords = _build_town_coords_lookup()
+    except Exception:
+        town_coords = {}
+    landing_prediction_previews = _attach_prediction_coordinates(
+        _get_landing_prediction_previews(),
+        town_coords,
+    )
     return render_template(
         "landing.html",
         landing_stats=_build_landing_stats(),
+        landing_prediction_previews=landing_prediction_previews,
         premium_plan=premium,
         premium_price_display=f"${premium['price_monthly']:.2f}",
         ai_daily_limit=GENERAL_DAILY_AI_ANSWER_LIMIT,

@@ -1507,9 +1507,10 @@ async function loadPins() {
             const blockValue = String(txn.block || '');
             const storeyValue = String(txn.storey_range || '');
             const floorAreaValue = txn.floor_area_sqm ?? '';
+            const leaseCommenceValue = txn.lease_commence_date ?? '';
             const monthValue = String(txn.month || '');
-            const predictUrl = `/predict?source=map_pin&auto_predict=1&town=${encodeURIComponent(townValue)}&flat_type=${encodeURIComponent(flatTypeValue)}&flat_model=${encodeURIComponent(flatModelValue)}&street_name=${encodeURIComponent(streetValue)}&block=${encodeURIComponent(blockValue)}&floor_area=${encodeURIComponent(floorAreaValue)}&storey_range=${encodeURIComponent(storeyValue)}`;
-            const analysisUrl = `/analytics?town=${encodeURIComponent(townValue)}&flat_type=${encodeURIComponent(flatTypeValue)}&flat_model=${encodeURIComponent(flatModelValue)}&street_name=${encodeURIComponent(streetValue)}&block=${encodeURIComponent(blockValue)}&floor_area=${encodeURIComponent(floorAreaValue)}&storey_range=${encodeURIComponent(storeyValue)}`;
+            const predictUrl = `/predict?source=map_pin&auto_predict=1&town=${encodeURIComponent(townValue)}&flat_type=${encodeURIComponent(flatTypeValue)}&flat_model=${encodeURIComponent(flatModelValue)}&street_name=${encodeURIComponent(streetValue)}&block=${encodeURIComponent(blockValue)}&floor_area=${encodeURIComponent(floorAreaValue)}&storey_range=${encodeURIComponent(storeyValue)}&lease_commence=${encodeURIComponent(leaseCommenceValue)}`;
+            const analysisUrl = `/analytics?town=${encodeURIComponent(townValue)}&flat_type=${encodeURIComponent(flatTypeValue)}&flat_model=${encodeURIComponent(flatModelValue)}&street_name=${encodeURIComponent(streetValue)}&block=${encodeURIComponent(blockValue)}&floor_area=${encodeURIComponent(floorAreaValue)}&storey_range=${encodeURIComponent(storeyValue)}&lease_commence=${encodeURIComponent(leaseCommenceValue)}`;
 
             const priceLabel = Number.isFinite(price) ? '$' + Math.round(price).toLocaleString() : 'Price unavailable';
             const addressLabel = escapeHtml([blockValue, streetValue].filter(Boolean).join(' ') || 'Address unavailable');

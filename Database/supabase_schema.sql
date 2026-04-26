@@ -228,12 +228,14 @@ CREATE OR REPLACE FUNCTION rpc_api_transactions(
 RETURNS TABLE(
     town TEXT, flat_type TEXT, flat_model TEXT, block TEXT, street_name TEXT,
     storey_range TEXT, floor_area_sqm DOUBLE PRECISION,
+    lease_commence_date INTEGER,
     resale_price DOUBLE PRECISION, month TEXT, year INTEGER,
     latitude DOUBLE PRECISION, longitude DOUBLE PRECISION
 ) LANGUAGE SQL STABLE AS $$
     SELECT
         t.name, ft.name, fm.name, b.block, b.street_name,
         tx.storey_range, tx.floor_area_sqm,
+        tx.lease_commence_date,
         tx.resale_price, tx.month, tx.year,
         b.latitude, b.longitude
     FROM transactions tx
