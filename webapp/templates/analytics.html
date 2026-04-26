@@ -4509,6 +4509,7 @@ if (IS_PREMIUM) {
     let chatHistory = [];
     let chatBusy    = false;
     let isExpanded  = false;
+    const chatStorageKey = 'propsight:analytics:aiChat:v1:' + {{ g.user.get('id')|tojson }};
 
     const chatWidget   = document.getElementById('aiChatWidget');
     const chatToggle   = document.getElementById('aiChatToggle');
@@ -4663,6 +4664,35 @@ if (IS_PREMIUM) {
     }
     const removeTyping = () => { const el = document.getElementById('aiChatTyping'); if (el) el.remove(); };
 
+    function loadStoredChatHistory() {
+        try {
+            const raw = localStorage.getItem(chatStorageKey);
+            const parsed = raw ? JSON.parse(raw) : [];
+            return Array.isArray(parsed)
+                ? parsed.filter(h => h && (h.role === 'user' || h.role === 'model') && h.text)
+                : [];
+        } catch (e) {
+            return [];
+        }
+    }
+
+    function saveStoredChatHistory() {
+        try {
+            localStorage.setItem(chatStorageKey, JSON.stringify(chatHistory));
+        } catch (e) {}
+    }
+
+    function restoreChatHistory() {
+        chatHistory = loadStoredChatHistory();
+        if (!chatHistory.length) return;
+        chatHistory.forEach(h => {
+            appendBubble(h.text, h.role === 'user' ? 'user' : 'bot', h.role === 'model');
+        });
+        chatSuggestions.innerHTML = '';
+    }
+
+    restoreChatHistory();
+
     async function sendChatMessage() {
         const text = chatInput.value.trim();
         if (!text || chatBusy) return;
@@ -4735,6 +4765,7 @@ if (IS_PREMIUM) {
                     const linkedReply = withAnalyticsResourceLinks(text, reply);
                     chatHistory.push({ role: 'user', text });
                     chatHistory.push({ role: 'model', text: reply });
+                    saveStoredChatHistory();
                     appendBubble(linkedReply || 'No response received.', 'bot', Boolean(reply));
                     renderSuggestions(buildChatStarters());
                 }

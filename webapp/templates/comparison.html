@@ -1487,6 +1487,7 @@ var comparisonAiInput = document.getElementById('comparisonAiInput');
 var comparisonAiSend = document.getElementById('comparisonAiSend');
 var comparisonAiSuggestions = document.getElementById('comparisonAiSuggestions');
 var comparisonAiLimitNote = document.getElementById('comparisonAiLimitNote');
+var comparisonAiStorageKey = 'propsight:comparison:aiChat:v1:' + {{ g.user.get('id')|tojson }};
 var AI_GENERATED_DISCLAIMER_TEXT = 'AI-generated explanation based on the comparison data. May contain errors.';
 
 function escapeComparisonText(s) {
@@ -1539,6 +1540,41 @@ function appendComparisonBubble(role, text, isErr, isHtml, showDisclaimer) {
     comparisonAiThread.appendChild(wrap);
     comparisonAiThread.scrollTop = comparisonAiThread.scrollHeight;
     return wrap;
+}
+
+function loadStoredComparisonAiHistory() {
+    try {
+        var raw = localStorage.getItem(comparisonAiStorageKey);
+        var parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed)
+            ? parsed.filter(function(h) {
+                return h && (h.role === 'user' || h.role === 'model') && h.text;
+            })
+            : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function saveStoredComparisonAiHistory() {
+    try {
+        localStorage.setItem(comparisonAiStorageKey, JSON.stringify(comparisonAiHistory));
+    } catch (e) {}
+}
+
+function restoreComparisonAiHistory() {
+    comparisonAiHistory = loadStoredComparisonAiHistory();
+    if (!comparisonAiHistory.length) return;
+    comparisonAiHistory.forEach(function(h) {
+        appendComparisonBubble(
+            h.role === 'user' ? 'user' : 'ai',
+            h.text,
+            false,
+            false,
+            h.role === 'model'
+        );
+    });
+    if (comparisonAiSuggestions) comparisonAiSuggestions.style.display = 'none';
 }
 
 function appendComparisonTyping() {
@@ -1726,7 +1762,7 @@ window.sendComparisonAI = async function(text) {
         var body = IS_PREMIUM
             ? {
                 message: q,
-                history: comparisonAiHistory.slice(-8),
+                history: comparisonAiHistory,
                 surface: 'comparison',
                 context: buildComparisonApiContext()
             }
@@ -1770,6 +1806,7 @@ window.sendComparisonAI = async function(text) {
             if (IS_PREMIUM && answer) {
                 comparisonAiHistory.push({ role: 'user', text: q });
                 comparisonAiHistory.push({ role: 'model', text: answer });
+                saveStoredComparisonAiHistory();
             }
             appendComparisonBubble('ai', answer || 'No response received.', false, false, Boolean(answer));
         }
@@ -1790,7 +1827,9 @@ window.sendComparisonAI = async function(text) {
     }
 };
 
-if (HAS_RESULTS && comparisonAiSuggestions) {
+restoreComparisonAiHistory();
+
+if (HAS_RESULTS && comparisonAiSuggestions && !comparisonAiHistory.length) {
     renderComparisonStarters();
     comparisonAiSuggestions.addEventListener('click', function(e) {
         var btn = e.target.closest('.suggest-pill');

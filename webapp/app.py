@@ -3182,6 +3182,48 @@ def _generate_narrative_template(features, predicted_price, town, town_avg_price
     return " ".join(sentences)
 
 
+def _generate_shap_ai_summary(features, predicted_price, town, flat_type,
+                              town_avg_price=None, baseline_price=None):
+    """Generate a concise premium SHAP explanation. Falls back silently."""
+    if not GEMINI_API_KEY or not features:
+        return None
+
+    feature_lines = []
+    for item in features[:10]:
+        impact = int(round(_coerce_float(item.get("dollar_impact"), 0) or 0))
+        direction = "pushes price up" if impact >= 0 else "pushes price down"
+        feature_lines.append(
+            f"- {item.get('label', item.get('key', 'Feature'))}: {direction} by about ${abs(impact):,}"
+        )
+
+    context_bits = [
+        f"Predicted price: ${int(round(_coerce_float(predicted_price, 0) or 0)):,}",
+        f"Town: {str(town or 'Unknown').title()}",
+        f"Flat type: {flat_type or 'Unknown'}",
+    ]
+    if baseline_price is not None:
+        context_bits.append(f"Model baseline: ${int(round(float(baseline_price))):,}")
+    if town_avg_price:
+        context_bits.append(f"Town average for flat type: ${int(round(float(town_avg_price))):,}")
+
+    prompt = (
+        "Write a plain-English SHAP explanation for a Singapore HDB resale price prediction. "
+        "Use only the supplied feature impacts. Keep it to 2 short sentences under 90 words. "
+        "Explain which attributes push the estimate up or down, and avoid investment advice.\n\n"
+        + "\n".join(context_bits)
+        + "\n\nFeature impacts:\n"
+        + "\n".join(feature_lines)
+    )
+    try:
+        text = _call_gemini(prompt, max_tokens=220)
+    except Exception:
+        return None
+    if not text:
+        return None
+    cleaned = re.sub(r"\s+", " ", str(text)).strip()
+    return cleaned[:700] if cleaned else None
+
+
 def compute_shap_explanation(town, flat_type, flat_model, floor_area, storey_range,
                              lease_commence, predicted_price=None, override_year=None,
                              override_distances=None, town_avg_price=None):
@@ -3267,21 +3309,28 @@ def compute_shap_explanation(town, flat_type, flat_model, floor_area, storey_ran
         })
 
     rounded_items.sort(key=lambda item: abs(item["dollar_impact"]), reverse=True)
+    display_predicted_price = predicted_price_raw if predicted_price is None else float(predicted_price)
+    narrative = _generate_shap_ai_summary(
+        rounded_items,
+        display_predicted_price,
+        town,
+        flat_type,
+        town_avg_price=town_avg_price,
+        baseline_price=baseline_price,
+    ) or _generate_narrative_template(
+        rounded_items,
+        predicted_price_raw,
+        town,
+        town_avg_price=town_avg_price,
+        baseline_price=baseline_price,
+    )
 
     return {
         "features": rounded_items,
         "baseline_price": int(round(baseline_price)),
-        "predicted_price": int(round(
-            predicted_price_raw if predicted_price is None else float(predicted_price)
-        )),
+        "predicted_price": int(round(display_predicted_price)),
         "delta_from_baseline": int(round(predicted_price_raw - baseline_price)),
-        "narrative": _generate_narrative_template(
-            rounded_items,
-            predicted_price_raw,
-            town,
-            town_avg_price=town_avg_price,
-            baseline_price=baseline_price,
-        ),
+        "narrative": narrative,
         "model_note": None,
         "model_label": ARTEFACTS.get("model_label", "Model"),
         "feature_count": len(rounded_items),
@@ -3726,6 +3775,12 @@ def register():
     next_url = _safe_next_url(
         request.form.get("next", "") if request.method == "POST" else request.args.get("next", "")
     )
+    requested_plan = (
+        request.form.get("plan", "") if request.method == "POST" else request.args.get("plan", "")
+    ).strip().lower()
+    if requested_plan != "premium":
+        requested_plan = ""
+    initial_tier = "premium" if requested_plan == "premium" else "general"
 
     if request.method == "POST":
         username = request.form["username"].strip()
@@ -3734,10 +3789,10 @@ def register():
 
         if len(username) < 3:
             flash("Username must be at least 3 characters.", "danger")
-            return render_template("register.html", next_url=next_url)
+            return render_template("register.html", next_url=next_url, requested_plan=requested_plan)
         if len(password) < 6:
             flash("Password must be at least 6 characters.", "danger")
-            return render_template("register.html", next_url=next_url)
+            return render_template("register.html", next_url=next_url, requested_plan=requested_plan)
 
         try:
             result = _supabase_auth("/signup", payload={
@@ -3751,19 +3806,36 @@ def register():
                 flash("An account with that email already exists.", "danger")
             else:
                 flash(f"Registration failed: {exc}", "danger")
-            return render_template("register.html", next_url=next_url)
+            return render_template("register.html", next_url=next_url, requested_plan=requested_plan)
 
         # Also write to public.users so saved_predictions integer FK keeps working
         try:
             rows = _supabase_request(
                 SUPABASE_USERS_TABLE,
                 method="POST",
-                payload={"username": username, "email": email, "password_hash": "supabase-auth"},
+                payload={
+                    "username": username,
+                    "email": email,
+                    "password_hash": "supabase-auth",
+                    "subscription_tier": initial_tier,
+                },
                 prefer="return=representation",
             )
             db_user = rows[0] if rows else {}
         except SupabaseError:
             db_user = _get_supabase_user_by_email(email) or {}
+            if db_user.get("id") and initial_tier == "premium":
+                try:
+                    _supabase_request(
+                        SUPABASE_USERS_TABLE,
+                        method="PATCH",
+                        filters={"id": f"eq.{db_user['id']}"},
+                        payload={"subscription_tier": "premium"},
+                        prefer="return=minimal",
+                    )
+                    db_user["subscription_tier"] = "premium"
+                except SupabaseError:
+                    pass
 
         if result.get("access_token"):
             if not db_user.get("id"):
@@ -3773,14 +3845,20 @@ def register():
             session["username"] = username
             session["email"] = email
             session["access_token"] = result["access_token"]
-            session["subscription_tier"] = "general"
-            flash("Account created! Welcome.", "success")
+            session["subscription_tier"] = db_user.get("subscription_tier", initial_tier)
+            if session["subscription_tier"] == "premium":
+                flash("Account created and Premium activated. Welcome!", "success")
+            else:
+                flash("Account created! Welcome.", "success")
             return redirect(next_url or url_for("home"))
 
-        flash("Account created! Check your email to confirm before logging in.", "success")
+        if initial_tier == "premium":
+            flash("Account created with Premium selected. Check your email to confirm before logging in.", "success")
+        else:
+            flash("Account created! Check your email to confirm before logging in.", "success")
         return redirect(url_for("login", next=next_url) if next_url else url_for("login"))
 
-    return render_template("register.html", next_url=next_url)
+    return render_template("register.html", next_url=next_url, requested_plan=requested_plan)
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -4217,13 +4295,6 @@ def api_comparison_ai_analysis():
     if len(payloads) < 2:
         return jsonify({"error": "Need at least 2 properties"}), 400
 
-    allowed, used, limit = _check_daily_ai_feature_limit(
-        "comparison_ai_analysis",
-        PREMIUM_DAILY_COMPARISON_AI_LIMIT,
-    )
-    if not allowed:
-        return jsonify({"error": "limit_reached", "used": used, "limit": limit}), 429
-
     # Rank factors
     ranking = _rank_comparison_factors(payloads)
     if not ranking:
@@ -4477,7 +4548,37 @@ def predict():
 def api_upcoming_mrt_stations():
     if session.get("subscription_tier", "general") != "premium":
         return jsonify({"error": "Premium feature"}), 403
-    return jsonify(_UPCOMING_MRT_STATIONS)
+    town = request.args.get("town", "").strip()
+    street_name = request.args.get("street_name", "").strip()
+    block = request.args.get("block", "").strip()
+
+    coords = None
+    if street_name or block:
+        coords = _geocode_block_onemap(block, street_name)
+    if coords is None and town:
+        town_coords = TOWN_COORDS.get(town)
+        if town_coords:
+            coords = (town_coords["lat"], town_coords["lng"])
+
+    stations = []
+    for station in _UPCOMING_MRT_STATIONS:
+        item = dict(station)
+        if coords is not None:
+            distance_m = int(round(
+                _haversine_km(coords[0], coords[1], float(item["lat"]), float(item["lng"])) * 1000
+            ))
+            item["distance_m"] = distance_m
+            item["distance_label"] = (
+                f"{distance_m} m" if distance_m < 1000 else f"{distance_m / 1000:.1f} km"
+            )
+        stations.append(item)
+
+    if coords is not None:
+        stations.sort(key=lambda item: item.get("distance_m", 10**9))
+        nearby = [item for item in stations if item.get("distance_m", 10**9) <= 5000]
+        stations = nearby[:10] if nearby else stations[:10]
+
+    return jsonify(stations)
 
 
 @app.route("/api/mrt_whatif", methods=["POST"])
@@ -5982,6 +6083,19 @@ def api_ai_chat():
     context = body.get("context", {})
     if not isinstance(context, dict):
         context = {}
+    if not isinstance(history, list):
+        history = []
+
+    clean_history = []
+    for item in history:
+        if not isinstance(item, dict):
+            continue
+        role = item.get("role")
+        if role not in {"user", "model"}:
+            continue
+        text = str(item.get("text") or "").strip()
+        if text:
+            clean_history.append({"role": role, "text": text[:2000]})
 
     if not message:
         return jsonify({"error": "No message provided"}), 400
@@ -6005,17 +6119,22 @@ def api_ai_chat():
     #build Gemini multi-turn contents
     contents = []
 
-    if not history:
+    if not clean_history:
         # First message: system prompt + user question
         first_parts = [{"text": system_text + "\n\n<user_question>\n" + message + "\n</user_question>"}]
         contents.append({"role": "user", "parts": first_parts})
     else:
-        # Rebuild conversation: first turn always carries system prompt
-        first_parts = [{"text": system_text + "\n\n<user_question>\n" + history[0]["text"] + "\n</user_question>"}]
-        contents.append({"role": "user", "parts": first_parts})
+        # Rebuild the full conversation; the first user turn carries the system prompt.
+        first = clean_history[0]
+        if first["role"] == "user":
+            first_parts = [{"text": system_text + "\n\n<user_question>\n" + first["text"] + "\n</user_question>"}]
+            contents.append({"role": "user", "parts": first_parts})
+            remaining_history = clean_history[1:]
+        else:
+            contents.append({"role": "user", "parts": [{"text": system_text}]})
+            remaining_history = clean_history
 
-        # Add remaining history (cap at last 20 messages = 10 exchanges)
-        for h in history[1:][-20:]:
+        for h in remaining_history:
             contents.append({"role": h["role"], "parts": [{"text": h["text"]}]})
 
         # Add current message

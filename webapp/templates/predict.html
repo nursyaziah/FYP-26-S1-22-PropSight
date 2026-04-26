@@ -1309,7 +1309,7 @@ body > nav, body > footer, body > header {
       {% endif %}
 
       <div class="shap-narrative">
-        <div class="narrative-kicker">Plain-English Summary</div>
+        <div class="narrative-kicker">AI-Generated Plain-English Summary</div>
         <p style="margin:0;">{{ explanation.narrative }}</p>
       </div>
 
@@ -2296,15 +2296,25 @@ document.addEventListener('click', function(e) {
   var manualEl = document.getElementById('mrtManualDist');
   var resultEl = document.getElementById('mrtWhatifResult');
 
-  // Load upcoming station list and populate dropdown
-  fetch('/api/upcoming_mrt_stations')
+  // Load nearby upcoming station list and populate dropdown
+  var stationParams = new URLSearchParams();
+  [
+    ['town', ctx.town],
+    ['street_name', ctx.street_name],
+    ['block', ctx.block]
+  ].forEach(function(pair) {
+    if (pair[1]) stationParams.set(pair[0], pair[1]);
+  });
+  var stationUrl = '/api/upcoming_mrt_stations' + (stationParams.toString() ? '?' + stationParams.toString() : '');
+  fetch(stationUrl)
     .then(function (r) { return r.ok ? r.json() : []; })
     .then(function (stations) {
       if (!selectEl || !stations.length) return;
       stations.forEach(function (s) {
         var opt = document.createElement('option');
         opt.value = JSON.stringify({ lat: s.lat, lng: s.lng, name: s.name });
-        opt.textContent = s.name + ' (' + s.line + ', ~' + s.year + ')';
+        opt.textContent = s.name + ' (' + s.line + ', ~' + s.year + ')' +
+          (s.distance_label ? ' · ' + s.distance_label + ' away' : '');
         selectEl.appendChild(opt);
       });
     })

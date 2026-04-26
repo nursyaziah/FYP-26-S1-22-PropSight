@@ -148,12 +148,23 @@
 {% block content %}
 <section class="premium-auth-shell">
     <div class="premium-auth-card">
-        <h1 class="auth-heading">Create your account</h1>
-        <p class="auth-subheading">Set up your PropSight access in less than a minute.</p>
+        <h1 class="auth-heading">
+            {% if requested_plan == 'premium' %}Create your Premium account{% else %}Create your account{% endif %}
+        </h1>
+        <p class="auth-subheading">
+            {% if requested_plan == 'premium' %}
+            Your Premium plan will be activated as soon as your account is created.
+            {% else %}
+            Set up your PropSight access in less than a minute.
+            {% endif %}
+        </p>
 
         <form method="POST" action="{{ url_for('register') }}">
             {% if next_url %}
             <input type="hidden" name="next" value="{{ next_url }}">
+            {% endif %}
+            {% if requested_plan %}
+            <input type="hidden" name="plan" value="{{ requested_plan }}">
             {% endif %}
             <div class="auth-field">
                 <label class="auth-label" for="username">Username</label>
