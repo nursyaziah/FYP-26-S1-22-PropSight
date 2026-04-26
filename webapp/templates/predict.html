@@ -1360,7 +1360,7 @@ body > nav, body > footer, body > header {
       <div class="genai-header">
         <span class="p-kicker">AI Assistant</span>
         <h3 class="section-title-lg" style="font-size:19px;">Ask About This Prediction</h3>
-        <p class="genai-sub">Get plain-English explanations powered by Gemini AI &mdash; no property jargon.</p>
+        <p class="genai-sub">Predict explains one flat. Use Analytics for market trends and Comparison for side-by-side value/location tradeoffs.</p>
       </div>
 
       <div class="suggest-pills" id="initialSuggestions">
@@ -1841,6 +1841,18 @@ if (pForm && subBtn) {
     return comparisonBaseUrl + '?' + params.toString();
   }
 
+  function pickAnalyticsFocus(question) {
+    var text = String(question || '').toLowerCase();
+    if (/lease\s+decay|remaining\s+lease|cpf|bank\s+loan/.test(text)) return 'lease';
+    if (/district|town\s+(average|benchmark|comparison)|nearby\s+town|other\s+town/.test(text)) return 'district';
+    if (/area\s+comparison|street\s+comparison|within[-\s]?town|inside\s+town|\b(which|what)\s+(area|street|estate|zone|neighbou?rhood)\b.*\b(stronger|better|best|location|amenit|transport|mrt|demand)\b|\b(stronger|better|best)\s+location\b.*\b(area|street|estate|zone|neighbou?rhood)\b/.test(text)) return 'area';
+    if (/forecast|projection|future\s+(value|price)|5[-\s]?year/.test(text)) return 'forecast';
+    if (/transaction|volume|market\s+activity|sales\s+activity/.test(text)) return 'volume';
+    if (/flat\s+type\s+(mix|distribution|breakdown|demand)/.test(text)) return 'flattype';
+    if (/comparable|similar\s+transaction|market\s+position/.test(text)) return 'myflat';
+    return 'trend';
+  }
+
   function containsAny(text, terms) {
     text = String(text || '').toLowerCase();
     return terms.some(function(term) { return text.indexOf(term) !== -1; });
@@ -2013,6 +2025,28 @@ if (pForm && subBtn) {
     }
   };
 
+  function isPropertyComparisonQuestion(q) {
+    var text = String(q || '').toLowerCase();
+    return /best\s+(value|location)|which\s+(one|panel|option|flat|property)|compare\s+(these|two|options|flats|properties|with another)|side[-\s]?by[-\s]?side|factor\s+(should\s+i\s+)?prioriti[sz]e|prioriti[sz]e\s+(lease|location|mrt|price|value)/i.test(text);
+  }
+
+  function isAnalyticsQuestion(q) {
+    var text = String(q || '').toLowerCase();
+    return /analytics|market\s+(trend|context|movement|demand)|price\s+trend|historical|history|transaction\s+(volume|activity|count)|sales\s+(volume|activity)|district\s+comparison|area\s+comparison|town\s+(average|benchmark|comparison|ranking)|nearby\s+town|other\s+town|flat\s+type\s+(mix|distribution|demand|breakdown)|lease\s+decay\s+(chart|analysis)|forecast\s+(chart|table)|5[-\s]?year\s+(forecast|projection)|comparable\s+(sales|transactions)|recent\s+similar\s+transactions|\b(which|what)\s+(area|street|town|estate|zone|neighbou?rhood)\b.*\b(stronger|better|best|location|amenit|transport|mrt|demand)\b|\b(stronger|better|best)\s+location\b.*\b(area|street|town|estate|zone|neighbou?rhood)\b/i.test(text);
+  }
+
+  function buildPredictionComparisonRedirect() {
+    return 'That is a property-comparison question. Predict explains this single estimate; use the [Comparison page](' +
+      buildPredictionComparisonLink() +
+      ') to compare flats side by side for best value, location, lease, and the factor you want to prioritise.';
+  }
+
+  function buildPredictionAnalyticsRedirect(q) {
+    return 'That is a market analytics question. Predict explains this single estimate; use the [Analytics page](' +
+      buildPredictionAnalyticsLink(pickAnalyticsFocus(q)) +
+      ') for price trends, lease decay, district or area context, transaction volume, and historical movement.';
+  }
+
   // Generate dynamic suggestion pills based on SHAP and context
   function buildSuggestionPills() {
     var pills = [];
@@ -2105,6 +2139,23 @@ if (pForm && subBtn) {
     if (initPills) initPills.style.display = 'none';
 
     appendBubble('user', q);
+
+    if (isPropertyComparisonQuestion(q)) {
+      appendBubble('ai', buildPredictionComparisonRedirect(), false, false, false);
+      appendFollowUps();
+      busy = false;
+      sendBtn2.disabled = false;
+      return;
+    }
+
+    if (isAnalyticsQuestion(q)) {
+      appendBubble('ai', buildPredictionAnalyticsRedirect(q), false, false, false);
+      appendFollowUps();
+      busy = false;
+      sendBtn2.disabled = false;
+      return;
+    }
+
     var tyEl = appendTyping();
 
     try {

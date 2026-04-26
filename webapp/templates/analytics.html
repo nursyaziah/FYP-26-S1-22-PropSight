@@ -1826,6 +1826,7 @@
         <h5 class="mb-3">
             <i class="bi bi-patch-question me-2 text-primary"></i>Useful Questions About Your Data
         </h5>
+        <p class="text-muted small mb-3">Analytics explains market trends and area context. Use Predict for a single-flat estimate or Comparison for property-by-property value/location tradeoffs.</p>
         <div class="row g-3{% if not is_premium %} ai-locked-blur{% endif %}">
             <!-- Value FAQ -->
             <div class="col-lg-3">
@@ -1935,13 +1936,13 @@
         </div>
         <div id="aiChatMessages" class="ai-chat-messages">
             <div class="ai-chat-bubble ai-chat-bot">
-                Ask about the data on this page — I use the filters, chart data, and numbers here to explain what the trends mean for homeowners like you.
+                Analytics explains market trends. Use Predict for a single-flat estimate or Comparison for property-by-property value/location tradeoffs.
             </div>
         </div>
         <div id="aiChatSuggestions" class="ai-chat-suggestions"></div>
         <div class="ai-chat-input-area">
             <input id="aiChatInput" type="text" class="form-control form-control-sm"
-                   placeholder="Ask about prices, trends, comparisons..." maxlength="500">
+                   placeholder="Ask about prices, trends, area context..." maxlength="500">
             <button id="aiChatSend" class="btn btn-primary btn-sm"><i class="bi bi-send-fill"></i></button>
         </div>
     </div>
@@ -1992,6 +1993,7 @@ let hasAppliedYearParams = false;
 
 /* ── URL seed (from Predict page redirect) ────────────────────────────────── */
 const pageParams = new URLSearchParams(window.location.search);
+const predictBaseUrl = {{ url_for('predict') | tojson }};
 const analyticsBaseUrl = {{ url_for('analytics') | tojson }};
 const comparisonBaseUrl = {{ url_for('comparison') | tojson }};
 const serverPredictionSeed = {{ prediction_seed | tojson }};
@@ -2101,6 +2103,61 @@ function buildAiFallbackHtml(variant) {
         '<div class="ai-fallback-sub">In the meantime:</div>' +
         '<div class="ai-fallback-links">' + linksHtml + '</div>' +
     '</div>';
+}
+
+function isPropertyComparisonQuestion(q) {
+    const text = String(q || '').toLowerCase();
+    return /best\s+(value|location)|which\s+(one|panel|option|flat|property)|compare\s+(these|two|options|flats|properties|with another)|side[-\s]?by[-\s]?side|factor\s+(should\s+i\s+)?prioriti[sz]e|prioriti[sz]e\s+(lease|location|mrt|price|value)/i.test(text);
+}
+
+function isAreaLocationQuestion(q) {
+    const text = String(q || '').toLowerCase();
+    return /\b(which|what)\s+(area|street|town|estate|zone|neighbou?rhood)\b.*\b(stronger|better|best|location|amenit|transport|mrt|demand)\b|\b(stronger|better|best)\s+location\b.*\b(area|street|town|estate|zone|neighbou?rhood)\b/i.test(text);
+}
+
+function buildAnalyticsComparisonRedirect() {
+    return 'That is a property-by-property comparison question. Analytics explains market trends; use the [Comparison page](' +
+        buildAnalyticsComparisonLink() +
+        ') to compare flats side by side for best value, location, lease, and the factor you want to prioritise.';
+}
+
+function buildAnalyticsPredictLink() {
+    const params = new URLSearchParams();
+    const seed = predictionSeed || {};
+    [
+        ['town', seed.town],
+        ['flat_type', seed.flat_type],
+        ['flat_model', seed.flat_model],
+        ['floor_area', seed.floor_area],
+        ['storey_range', seed.storey_range],
+        ['lease_commence', seed.lease_commence],
+        ['street_name', seed.street_name],
+        ['block', seed.block],
+    ].forEach(pair => setParamIfValue(params, pair[0], pair[1]));
+    if (seed.town && seed.flat_type) {
+        params.set('auto_predict', '1');
+        params.set('source', 'analytics');
+    }
+    return predictBaseUrl + (params.toString() ? ('?' + params.toString()) : '');
+}
+
+function isPredictionQuestion(q) {
+    const text = String(q || '').toLowerCase();
+    return /\b(run|generate|make|create|get)\s+(a\s+)?(price\s+)?(prediction|estimate|valuation)\b|how\s+much\s+(is|could|would)\s+(my|this)\s+(flat|home|property)\s+(be\s+)?worth|estimate\s+(my|this)\s+(flat|home|property)|predict\s+(my|this)\s+(flat|home|property)|valuation\s+for\s+(my|this)\s+(flat|home|property)|what\s+is\s+(my|this)\s+(flat|home|property)\s+worth|single[-\s]?flat\s+(estimate|prediction|valuation)/i.test(text);
+}
+
+function buildAnalyticsPredictRedirect() {
+    return 'That is a single-flat prediction question. Analytics explains market trends; use the [Predict page](' +
+        buildAnalyticsPredictLink() +
+        ') to generate or inspect the estimated value for one HDB flat.';
+}
+
+function buildAnalyticsAreaRedirect() {
+    return 'That is an area-comparison question. Use [Area Comparison](' +
+        buildAnalyticsSectionLink('area', 'town_area') +
+        ') to compare streets or areas within the selected town, or [District Comparison](' +
+        buildAnalyticsSectionLink('district') +
+        ') for town-level context.';
 }
 
 function buildMyFlatContext() {
@@ -4613,6 +4670,30 @@ if (IS_PREMIUM) {
         chatInput.value = '';
         chatSendBtn.disabled = true;
         appendBubble(text, 'user');
+        if (isPredictionQuestion(text)) {
+            appendBubble(buildAnalyticsPredictRedirect(), 'bot');
+            renderSuggestions(buildChatStarters());
+            chatBusy = false;
+            chatSendBtn.disabled = false;
+            chatInput.focus();
+            return;
+        }
+        if (isAreaLocationQuestion(text)) {
+            appendBubble(buildAnalyticsAreaRedirect(), 'bot');
+            renderSuggestions(buildChatStarters());
+            chatBusy = false;
+            chatSendBtn.disabled = false;
+            chatInput.focus();
+            return;
+        }
+        if (isPropertyComparisonQuestion(text)) {
+            appendBubble(buildAnalyticsComparisonRedirect(), 'bot');
+            renderSuggestions(buildChatStarters());
+            chatBusy = false;
+            chatSendBtn.disabled = false;
+            chatInput.focus();
+            return;
+        }
         showTyping();
         try {
             const resp = await fetch('/api/ai_chat', {
