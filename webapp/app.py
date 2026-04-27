@@ -1004,17 +1004,22 @@ def _reload_artefacts_if_newer_run(force=False):
 
 
 def _read_training_report_tail(run_dir, max_chars=12000):
+    text, _ = _read_training_report(run_dir, max_chars=max_chars)
+    return text
+
+
+def _read_training_report(run_dir, max_chars=200000):
     path = os.path.join(run_dir, "training_report.txt")
     if not os.path.isfile(path):
-        return ""
+        return "", False
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
             text = f.read()
     except OSError:
-        return ""
+        return "", False
     if len(text) <= max_chars:
-        return text
-    return text[-max_chars:]
+        return text, False
+    return text[-max_chars:], True
 
 
 @app.before_request
@@ -7587,6 +7592,34 @@ def api_admin_model_inventory():
             "history": history,
             "train_test_mape_gap": gap,
             "mape_trend": mape_trend,
+        })
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/admin/model_inventory/<run_id>/training_report")
+@api_admin_required
+def api_admin_model_training_report(run_id):
+    """Return the training report for a selected model run."""
+    run_id = str(run_id or "").strip()
+    if not RUN_DIR_NAME_RE.match(run_id):
+        return jsonify({"error": "Invalid run id"}), 400
+
+    try:
+        _reload_artefacts_if_newer_run(force=True)
+        run_dirs = {
+            os.path.basename(path): path
+            for path in _iter_valid_run_dirs(ASSETS_DIR)
+        }
+        run_dir = run_dirs.get(run_id)
+        if not run_dir:
+            return jsonify({"error": "Model run not found"}), 404
+
+        report, truncated = _read_training_report(run_dir)
+        return jsonify({
+            "run_id": run_id,
+            "training_report": report,
+            "truncated": truncated,
         })
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500

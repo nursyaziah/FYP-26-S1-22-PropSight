@@ -273,7 +273,7 @@
             </div></div></div>
           </div>
           <div class="content-card mb-4">
-            <div class="card-header-custom"><div><div class="card-title-custom">Training report (active run)</div><div class="card-sub-custom">End of training_report.txt for the newest loaded run (full file may be longer).</div></div></div>
+            <div class="card-header-custom"><div><div class="card-title-custom" id="model-training-report-title">Training report (active run)</div><div class="card-sub-custom" id="model-training-report-sub">Click a model version below to load its training_report.txt.</div></div></div>
             <div class="card-body-custom" style="padding-top:0;">
               <pre id="model-training-report" style="margin:0;font-size:.78rem;line-height:1.45;white-space:pre-wrap;word-break:break-word;max-height:320px;overflow:auto;background:rgba(15,23,42,.04);border-radius:8px;padding:14px 16px;color:var(--gray);">Loading…</pre>
             </div>
@@ -936,6 +936,36 @@
       charts.mapeTrend.update();
     }
 
+    async function loadTrainingReportForRun(encodedRunId, rowEl){
+      const runId = decodeURIComponent(String(encodedRunId || '')).trim();
+      if(!runId) return;
+      const pre = document.getElementById('model-training-report');
+      const title = document.getElementById('model-training-report-title');
+      const sub = document.getElementById('model-training-report-sub');
+      document.querySelectorAll('.model-version-row').forEach((el)=>{
+        el.style.background = '';
+      });
+      if(rowEl) rowEl.style.background = 'rgba(37,99,235,.06)';
+      if(title) title.textContent = 'Training report (' + runId + ')';
+      if(sub) sub.textContent = 'Loading selected model run report...';
+      if(pre) pre.textContent = 'Loading training_report.txt for ' + runId + '...';
+
+      try{
+        const data = await fetchJson('/api/admin/model_inventory/' + encodeURIComponent(runId) + '/training_report');
+        const txt = String(data.training_report || '').trim();
+        if(pre) pre.textContent = txt || '(No training_report.txt for this run.)';
+        if(sub){
+          sub.textContent = data.truncated
+            ? 'Large report loaded from the latest section of training_report.txt.'
+            : 'Full training_report.txt for the selected model version.';
+        }
+      } catch(e){
+        if(pre) pre.textContent = e.message || 'Could not load training_report.txt.';
+        if(sub) sub.textContent = 'Report load failed.';
+        showToast(e.message || 'Failed to load training report.','error');
+      }
+    }
+
     async function loadModelVersions(){
       if(modelsLoading) return;
       modelsLoading = true;
@@ -996,6 +1026,10 @@
           const txt = (a.training_report_tail||'').trim();
           pre.textContent = txt || '(No training_report.txt for this run.)';
         }
+        const reportTitle = document.getElementById('model-training-report-title');
+        if(reportTitle) reportTitle.textContent = 'Training report (' + runLabel + ')';
+        const reportSub = document.getElementById('model-training-report-sub');
+        if(reportSub) reportSub.textContent = 'Click a model version below to load its training_report.txt.';
 
         const tbody = document.getElementById('model-versions-tbody');
         if(tbody){
@@ -1003,9 +1037,9 @@
           if(!rows.length){
             tbody.innerHTML = '<tr><td colspan="8" style="color:var(--gray);">No runs found under ML/model_assets.</td></tr>';
           } else {
-            tbody.innerHTML = rows.map((h)=>`<tr>
-              <td><strong>${h.run_id||'—'}</strong></td>
-              <td>${h.algorithm||'—'}</td>
+            tbody.innerHTML = rows.map((h)=>`<tr class="model-version-row" onclick="loadTrainingReportForRun('${encodeURIComponent(h.run_id||'')}', this)" title="Load training report for ${escapeHtml(h.run_id||'this run')}" style="cursor:pointer;${h.is_active?'background:rgba(37,99,235,.06);':''}">
+              <td><strong>${escapeHtml(h.run_id||'—')}</strong></td>
+              <td>${escapeHtml(h.algorithm||'—')}</td>
               <td style="color:#10b981;font-weight:700;">${_fmtModelPct(h.train_mape)}</td>
               <td style="color:#f59e0b;font-weight:700;">${_fmtModelPct(h.val_mape)}</td>
               <td style="color:#2563eb;font-weight:700;">${_fmtModelPct(h.test_mape)}</td>
