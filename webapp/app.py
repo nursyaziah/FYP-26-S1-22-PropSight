@@ -5032,7 +5032,7 @@ def save_prediction():
             flash("Could not check your saved prediction limit right now.", "danger")
             return redirect(url_for("my_predictions"))
         if len(existing) >= 3:
-            flash("Free users can save up to 3 predictions. Upgrade to Premium for unlimited saves.", "warning")
+            flash("Free users can save up to 3 predictions. Delete an existing saved prediction or upgrade to Premium for unlimited saves.", "warning")
             return redirect(url_for("my_predictions"))
 
     prediction = {
