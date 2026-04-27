@@ -74,13 +74,13 @@
                     <span class="badge rounded-pill text-bg-light border mb-3 px-3 py-2">Community Reviews</span>
                     <h1 class="fw-bold mb-2">Share Your PropSight Experience</h1>
                     <p class="text-secondary mb-0">Your feedback helps fellow Singaporeans make better property decisions.</p>
-                    <p class="text-secondary small mb-0 mt-2">Signed-in members only. You can delete your review anytime.</p>
+                    <p class="text-secondary small mb-0 mt-2">Signed-in members only. Reviews appear after admin moderation.</p>
                 </div>
 
                 <div id="review-existing-banner" class="alert review-existing-banner border d-none mb-4" role="status">
                     <div>
-                        <span class="fw-semibold d-block">You already have a public review.</span>
-                        <span class="text-secondary small">Submitting the form again replaces it. Or remove it from the wall entirely.</span>
+                        <span id="review-existing-title" class="fw-semibold d-block">You already have a review submission.</span>
+                        <span id="review-existing-copy" class="text-secondary small">Submitting the form again replaces it and sends it back for moderation.</span>
                     </div>
                     <button type="button" id="delete-review-btn" class="btn btn-outline-danger rounded-pill px-4 flex-shrink-0">
                         Delete my review
@@ -128,7 +128,7 @@
             <div id="review-success" class="review-success">
                 <div class="review-success-icon"><i class="bi bi-check2"></i></div>
                 <h3 class="fw-bold mb-2">Thank you for your review.</h3>
-                <p class="text-secondary mb-4">Your voice helps us improve and supports future buyers and sellers.</p>
+                <p class="text-secondary mb-4">Your review has been submitted for moderation before it appears publicly.</p>
                 <a href="/" class="btn btn-outline-dark rounded-pill px-4">
                     <i class="bi bi-arrow-left"></i> Back to Landing
                 </a>
@@ -150,6 +150,8 @@
         var formWrap = document.getElementById('review-form-wrap');
         var successEl = document.getElementById('review-success');
         var existingBanner = document.getElementById('review-existing-banner');
+        var existingTitle = document.getElementById('review-existing-title');
+        var existingCopy = document.getElementById('review-existing-copy');
         var deleteBtn = document.getElementById('delete-review-btn');
 
         function fetchOpts(method, bodyObj) {
@@ -176,6 +178,17 @@
             existingBanner.classList.remove('d-none');
             existingBanner.classList.add('d-flex', 'flex-column', 'flex-sm-row', 'align-items-sm-center', 'justify-content-between', 'gap-3');
             if (submitLabel) submitLabel.textContent = 'Update review';
+            var isApproved = review.is_approved === true;
+            if (existingTitle) {
+                existingTitle.textContent = isApproved
+                    ? 'You already have a public review.'
+                    : 'Your review is awaiting moderation.';
+            }
+            if (existingCopy) {
+                existingCopy.textContent = isApproved
+                    ? 'Submitting the form again replaces it and sends the new version back for moderation.'
+                    : 'Submitting the form again replaces your pending review and keeps it in the moderation queue.';
+            }
             document.getElementById('name').value = review.name || '';
             document.getElementById('role').value = review.role || '';
             document.getElementById('content').value = review.content || '';
@@ -207,7 +220,7 @@
         loadMyReview();
 
         deleteBtn.addEventListener('click', function () {
-            if (!window.confirm('Remove your review from the landing page? You can submit a new one later.')) return;
+            if (!window.confirm('Remove your review submission? You can submit a new one later.')) return;
             errorEl.classList.add('d-none');
             deleteBtn.disabled = true;
             fetch('/api/reviews/mine', fetchOpts('DELETE'))

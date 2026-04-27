@@ -1298,7 +1298,7 @@ class Review:
     role: str
     rating: int
     content: str
-    is_approved: bool = True
+    is_approved: bool = False
 
     def to_insert_payload(self):
         return {
@@ -5663,7 +5663,7 @@ def api_delete_my_review():
 @app.route("/api/reviews", methods=["POST"])
 @api_login_required
 def api_create_review():
-    """Create or replace the logged-in user's review."""
+    """Create or replace the logged-in user's review as pending moderation."""
     user_id = _session_user_id()
     payload = request.get_json(silent=True) or {}
     name = str(payload.get("name") or "").strip()
@@ -5693,7 +5693,7 @@ def api_create_review():
         role=role,
         rating=rating,
         content=content,
-        is_approved=True,
+        is_approved=False,
     )
 
     try:
@@ -5716,7 +5716,7 @@ def api_create_review():
         user_id,
         str(session.get("email") or "").strip().lower(),
     )
-    return jsonify({"ok": True, "message": "Review submitted successfully."}), 201
+    return jsonify({"ok": True, "message": "Review submitted for moderation."}), 201
 
 
 @app.route("/api/public/reviews")
