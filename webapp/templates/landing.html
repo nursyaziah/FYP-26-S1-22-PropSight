@@ -217,16 +217,28 @@
         }
 
         .text-gradient {
-            background: linear-gradient(135deg, var(--primary) 0%, #0ea5e9 50%, var(--secondary) 100%);
-            background-size: 200% auto;
-            animation: textShine 4s linear infinite;
+            background: linear-gradient(135deg,
+                    #2563eb 0%,
+                    #3b82f6 26%,
+                    #0ea5e9 56%,
+                    #22d3ee 78%,
+                    #14b8a6 100%);
+            background-size: 180% 180%;
+            animation: textShine 4.8s ease-in-out infinite alternate;
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
+            filter: saturate(1.05);
         }
 
         @keyframes textShine {
+            from {
+                background-position: 0% 40%;
+                filter: saturate(1);
+            }
+
             to {
-                background-position: 200% center;
+                background-position: 100% 60%;
+                filter: saturate(1.22);
             }
         }
 
@@ -2039,7 +2051,7 @@
 
                     <h1 class="hero-title">
                         Decode your HDB's <br>
-                        <span class="text-gradient">true value.</span>
+                        <span class="text-gradient">true value</span>.
                     </h1>
                     <p class="hero-subtitle">
                         A transparent second-opinion tool for homeowners. We use explainable AI and spatial analytics
