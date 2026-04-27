@@ -1281,6 +1281,32 @@
             backdrop-filter: blur(4px);
         }
 
+        .landing-map-loading-notice {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 4;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #e2e8f0;
+            background: rgba(15, 23, 42, 0.78);
+            border: 1px solid rgba(148, 163, 184, 0.35);
+            backdrop-filter: blur(4px);
+            transition: opacity 0.25s ease, visibility 0.25s ease;
+        }
+
+        .landing-map-loading-notice.is-hidden {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+
         .landing-predict-card {
             position: absolute;
             left: 18px;
@@ -2386,6 +2412,10 @@
                                 <div class="landing-map-preview-badge">
                                     <i class="bi bi-eye-fill"></i> Preview mode
                                 </div>
+                                <div id="landingMapLoadingNotice" class="landing-map-loading-notice">
+                                    <span class="spinner-border spinner-border-sm text-light" role="status" aria-hidden="true"></span>
+                                    <span>Loading map preview...</span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -2983,6 +3013,10 @@
                         <a href="#" class="text-white-50 fs-5"><i class="bi bi-linkedin"></i></a>
                         <a href="#" class="text-white-50 fs-5"><i class="bi bi-github"></i></a>
                     </div>
+                    <p class="small mt-3 mb-0">
+                        <i class="bi bi-envelope-fill me-2 text-secondary"></i>
+                        <a href="mailto:propsight2026@gmail.com" class="text-white-50 text-decoration-none hover-white">propsight2026@gmail.com</a>
+                    </p>
                 </div>
 
                 <div class="col-6 col-lg-2 ms-lg-auto">
@@ -3026,7 +3060,21 @@
         window.ensureLandingHeatmap = function () {
             if (typeof L === 'undefined') return;
             var el = document.getElementById('landingRealMap');
+            var loadingNotice = document.getElementById('landingMapLoadingNotice');
             if (!el) return;
+
+            function setLandingMapLoading(isLoading, message) {
+                if (!loadingNotice) return;
+                var textEl = loadingNotice.querySelector('span:last-child');
+                if (textEl && message) textEl.textContent = message;
+                loadingNotice.classList.toggle('is-hidden', !isLoading);
+            }
+
+            if (!window.__landingMapReady || !window.__landingDataReady) {
+                setLandingMapLoading(true, 'Loading map preview...');
+            } else {
+                setLandingMapLoading(false);
+            }
 
             function landingLerpColor(a, b, t) {
                 var ar = parseInt(a.slice(1, 3), 16), ag = parseInt(a.slice(3, 5), 16), ab = parseInt(a.slice(5, 7), 16);
@@ -3105,11 +3153,15 @@
                     tap: false,
                     touchZoom: false
                 }).setView([1.3521, 103.8198], 11);
-                L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                window.__landingBaseLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
                     attribution: '&copy; OpenStreetMap &copy; CARTO',
                     subdomains: 'abcd',
                     maxZoom: 19
                 }).addTo(window.__landingMap);
+                window.__landingBaseLayer.once('load', function () {
+                    window.__landingMapReady = true;
+                    if (window.__landingDataReady) setLandingMapLoading(false);
+                });
             }
 
             var map = window.__landingMap;
@@ -3122,8 +3174,15 @@
                 window.__landingChoroplethRequested = true;
                 fetch('/api/predicted_heatmap')
                     .then(function (r) { return r.json(); })
-                    .then(function (data) { loadLandingChoropleth(map, data); })
-                    .catch(function () { window.__landingChoroplethRequested = false; });
+                    .then(function (data) {
+                        loadLandingChoropleth(map, data);
+                        window.__landingDataReady = true;
+                        if (window.__landingMapReady) setLandingMapLoading(false);
+                    })
+                    .catch(function () {
+                        window.__landingChoroplethRequested = false;
+                        setLandingMapLoading(true, 'Map preview is taking longer than usual...');
+                    });
             }
         };
 
