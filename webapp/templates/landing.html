@@ -2343,16 +2343,16 @@
                                     <div class="mock-select active-typing">Select town...</div>
                                 </div>
 
-                                <div class="row g-2">
-                                    <div class="col-6">
-                                        <label class="small fw-bold text-gray mb-1">Street (optional)</label>
-                                        <div class="mock-select text-truncate">Any street...</div>
-                                    </div>
-                                    <div class="col-6">
-                                        <label class="small fw-bold text-gray mb-1">Block (optional)</label>
-                                        <div class="mock-select text-truncate">Any block...</div>
-                                    </div>
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <label class="small fw-bold text-gray mb-1">Street</label>
+                                    <div class="mock-select text-truncate">Select street...</div>
                                 </div>
+                                <div class="col-6">
+                                    <label class="small fw-bold text-gray mb-1">Block</label>
+                                    <div class="mock-select text-truncate">Select block...</div>
+                                </div>
+                            </div>
 
                                 <div class="mock-field">
                                     <label class="small fw-bold text-gray mb-1">Flat Type</label>
@@ -2394,7 +2394,13 @@
                                     style="width: 3rem; height: 3rem;"></div>
                                 <div class="h5 fw-bold text-dark">Analyzing...</div>
                                 <div class="result-price text-primary fw-800 display-5 my-2">$7XX,XXX</div>
-                                <div class="badge bg-success bg-opacity-10 text-success">96% confidence interval</div>
+                                <div class="badge bg-success bg-opacity-10 text-success">
+                                    {% if landing_stats.mape is not none %}
+                                    {{ "%.2f"|format(landing_stats.mape|float) }}% MAPE
+                                    {% else %}
+                                    MAPE unavailable
+                                    {% endif %}
+                                </div>
                             </div>
                         </div>
                     </div>
