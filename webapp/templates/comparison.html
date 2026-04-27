@@ -775,6 +775,24 @@ body.propsight-app {
   line-height: 1.4;
   margin-top: 0.5rem;
 }
+.comparison-data-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 11px;
+  margin-top: 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.12);
+  color: #92400e;
+  font-size: 12.5px;
+  line-height: 1.45;
+  font-weight: 600;
+}
+.comparison-data-warning i {
+  color: #b45309;
+  margin-top: 1px;
+}
 
 </style>
 {% endblock %}
@@ -1081,10 +1099,18 @@ body.propsight-app {
                         <div style="position:relative; height:200px;">
                             <canvas id="trendChart{{ panel.index }}"></canvas>
                         </div>
+                        <p id="trendDataWarning{{ panel.index }}" class="comparison-data-warning d-none">
+                            <i class="bi bi-exclamation-triangle-fill"></i>
+                            Historical price trend is unavailable for this selection due to limited transaction data.
+                        </p>
                         <p class="text-muted small mb-2 mt-3">5-Year Forecast</p>
                         <div style="position:relative; height:200px;">
                             <canvas id="forecastChart{{ panel.index }}"></canvas>
                         </div>
+                        <p id="forecastDataWarning{{ panel.index }}" class="comparison-data-warning d-none">
+                            <i class="bi bi-exclamation-triangle-fill"></i>
+                            5-year forecast is unavailable for this selection due to limited historical data.
+                        </p>
                         <p class="forecast-assumption mt-2 mb-0" style="font-size:12px;color:#64748b;line-height:1.5;">
                             <i class="bi bi-info-circle me-1"></i>
                             Future-year estimates assume current interest rate and market conditions hold. They isolate the effect of lease decay and property ageing, not a forecast of the broader market.
@@ -1381,6 +1407,10 @@ if (IS_PREMIUM && HAS_RESULTS && PAYLOADS.length >= 2) {
     // Render charts for each panel
     PAYLOADS.forEach(function(payload, idx) {
         if (!payload.town) return;
+        var trendWarning = document.getElementById('trendDataWarning' + idx);
+        var forecastWarning = document.getElementById('forecastDataWarning' + idx);
+        if (trendWarning) trendWarning.classList.add('d-none');
+        if (forecastWarning) forecastWarning.classList.add('d-none');
 
         // Price Trend
         var trendParams = new URLSearchParams({
@@ -1392,7 +1422,10 @@ if (IS_PREMIUM && HAS_RESULTS && PAYLOADS.length >= 2) {
         fetch('/api/price_trend_simple?' + trendParams.toString())
             .then(function(r) { return r.json(); })
             .then(function(data) {
-                if (!data || !data.length) return;
+                if (!data || !data.length) {
+                    if (trendWarning) trendWarning.classList.remove('d-none');
+                    return;
+                }
                 var ctx = document.getElementById('trendChart' + idx);
                 if (!ctx) return;
                 new Chart(ctx.getContext('2d'), {
@@ -1434,7 +1467,10 @@ if (IS_PREMIUM && HAS_RESULTS && PAYLOADS.length >= 2) {
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 var timeline = data.timeline || [];
-                if (timeline.length < 2) return;
+                if (timeline.length < 2) {
+                    if (forecastWarning) forecastWarning.classList.remove('d-none');
+                    return;
+                }
                 var ctx = document.getElementById('forecastChart' + idx);
                 if (!ctx) return;
                 new Chart(ctx.getContext('2d'), {
