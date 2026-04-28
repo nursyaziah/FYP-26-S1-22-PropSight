@@ -447,7 +447,7 @@ SCALE_COLS = [
     "dist_hawker_centre", "hawker_count_1km",
     "dist_high_demand_primary_school", "high_demand_primary_count_1km",
     "town_yoy_appreciation_lag1", "town_5yr_cagr_lag1",
-    "sora_3m",
+    "sora_3m", "sora_3m_change_3m",
 ]
 
 FEATURE_COLS = [
@@ -459,7 +459,12 @@ FEATURE_COLS = [
     "dist_hawker_centre", "hawker_count_1km",
     "dist_high_demand_primary_school", "high_demand_primary_count_1km",
     "town_yoy_appreciation_lag1", "town_5yr_cagr_lag1",
-    "sora_3m",
+    "town_flattype_median_1m", "town_flattype_median_3m",
+    "town_flattype_median_6m", "town_flattype_psf_1m",
+    "town_flattype_psf_3m", "town_median_3m", "town_txn_volume_3m",
+    "price_momentum_3m", "psf_change_1m_vs_3m",
+    "national_median_psf_1m", "national_median_psf_3m",
+    "sora_3m", "sora_3m_change_3m",
 ]
 
 STOREY_RANGES = [str(i) for i in range(1, 52)]
@@ -1132,6 +1137,91 @@ def _current_sora_3m() -> float:
 
 
 _refresh_current_sora(force=True)
+
+
+SORA_CSV_PATH = os.path.join(PROJECT_DIR, "ML", "data", "sora_monthly.csv")
+_SORA_MONTHLY_CACHE = None
+_SORA_MONTHLY_CACHE_MTIME = None
+
+
+def _load_local_sora_monthly_for_serving():
+    """Load local monthly SORA so serving can mirror the training change feature."""
+    global _SORA_MONTHLY_CACHE, _SORA_MONTHLY_CACHE_MTIME
+    try:
+        mtime = os.path.getmtime(SORA_CSV_PATH)
+    except OSError:
+        return pd.DataFrame(columns=["year_month", "sora_3m"])
+
+    if _SORA_MONTHLY_CACHE is not None and _SORA_MONTHLY_CACHE_MTIME == mtime:
+        return _SORA_MONTHLY_CACHE
+
+    try:
+        daily = pd.read_csv(SORA_CSV_PATH, skiprows=6, header=0)
+        daily = daily.rename(columns={
+            "SORA Publication Date": "end_of_day",
+            "Compound SORA - 3 month": "comp_sora_3m",
+        })
+        daily["end_of_day"] = pd.to_datetime(daily["end_of_day"], errors="coerce")
+        daily["comp_sora_3m"] = pd.to_numeric(daily["comp_sora_3m"], errors="coerce")
+        daily = daily.dropna(subset=["end_of_day", "comp_sora_3m"])
+        daily["year_month"] = (
+            daily["end_of_day"].dt.year * 100 + daily["end_of_day"].dt.month
+        ).astype(int)
+        monthly = (
+            daily.groupby("year_month")["comp_sora_3m"]
+            .mean()
+            .reset_index()
+            .rename(columns={"comp_sora_3m": "sora_3m"})
+            .sort_values("year_month")
+            .reset_index(drop=True)
+        )
+    except Exception:
+        monthly = pd.DataFrame(columns=["year_month", "sora_3m"])
+
+    _SORA_MONTHLY_CACHE = monthly
+    _SORA_MONTHLY_CACHE_MTIME = mtime
+    return monthly
+
+
+def _shift_year_month(year_month, months):
+    year = int(year_month) // 100
+    month = int(year_month) % 100
+    zero_based = year * 12 + (month - 1) + int(months)
+    new_year = zero_based // 12
+    new_month = zero_based % 12 + 1
+    return new_year * 100 + new_month
+
+
+def _sora_3m_change_3m(current_sora=None):
+    monthly = _load_local_sora_monthly_for_serving()
+    if monthly.empty:
+        return 0.0
+
+    try:
+        current_value = float(current_sora)
+    except (TypeError, ValueError):
+        current_value = None
+    if _SORA_SOURCE == "fallback":
+        current_value = None
+
+    now = datetime.now()
+    current_ym = now.year * 100 + now.month
+    if current_value is None:
+        eligible = monthly[monthly["year_month"] <= current_ym]
+        if eligible.empty:
+            return 0.0
+        current_ym = int(eligible.iloc[-1]["year_month"])
+        current_value = float(eligible.iloc[-1]["sora_3m"])
+
+    prior_ym = _shift_year_month(current_ym, -3)
+    prior_rows = monthly[monthly["year_month"] <= prior_ym]
+    if prior_rows.empty:
+        return 0.0
+
+    try:
+        return float(current_value) - float(prior_rows.iloc[-1]["sora_3m"])
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _serving_feature_cols():
@@ -3017,6 +3107,25 @@ def _compute_feature_contributions(feature_frame):
         contrib_row = contribs[0]
         return contrib_row[:-1], float(contrib_row[-1])
 
+    if model_key == "catboost" and model is not None:
+        try:
+            from catboost import Pool
+            cat_features = [
+                i for i, col in enumerate(feature_frame.columns)
+                if col in {"flat_type_ordinal", "is_mature_estate"}
+            ]
+            contribs = model.get_feature_importance(
+                Pool(feature_frame, cat_features=cat_features),
+                type="ShapValues",
+            )
+            contribs = np.asarray(contribs, dtype=float)
+            if contribs.ndim > 2:
+                contribs = contribs.reshape(contribs.shape[0], -1)
+            contrib_row = contribs[0]
+            return contrib_row[:-1], float(contrib_row[-1])
+        except Exception:
+            pass
+
     explainer = _get_shap_explainer()
     if explainer is None:
         return None, None
@@ -3147,6 +3256,18 @@ def _build_scaled_feature_df(town, flat_type, flat_model, floor_area, storey_ran
         or rolling_snap.get("_global_defaults")
         or {}
     )
+    town_flattype_psf_3m = rolling.get("town_flattype_psf_3m", 0.0)
+    town_flattype_psf_1m = rolling.get("town_flattype_psf_1m", town_flattype_psf_3m)
+    psf_change_1m_vs_3m = rolling.get("psf_change_1m_vs_3m")
+    if psf_change_1m_vs_3m is None:
+        try:
+            psf_change_1m_vs_3m = (
+                (float(town_flattype_psf_1m) - float(town_flattype_psf_3m))
+                / float(town_flattype_psf_3m)
+            ) if float(town_flattype_psf_3m) > 0 else 0.0
+        except (TypeError, ValueError, ZeroDivisionError):
+            psf_change_1m_vs_3m = 0.0
+    current_sora = _current_sora_3m()
 
     raw = {
         "flat_type_ordinal": flat_type_ord,
@@ -3171,14 +3292,25 @@ def _build_scaled_feature_df(town, flat_type, flat_model, floor_area, storey_ran
         "high_demand_primary_count_1km": high_demand_primary_count_1km,
         "town_yoy_appreciation_lag1": appreciation["town_yoy_appreciation_lag1"],
         "town_5yr_cagr_lag1": appreciation["town_5yr_cagr_lag1"],
+        "town_flattype_median_1m": rolling.get(
+            "town_flattype_median_1m",
+            rolling.get("town_flattype_median_3m", 0.0),
+        ),
         "town_flattype_median_3m": rolling.get("town_flattype_median_3m", 0.0),
         "town_flattype_median_6m": rolling.get("town_flattype_median_6m", 0.0),
-        "town_flattype_psf_3m": rolling.get("town_flattype_psf_3m", 0.0),
+        "town_flattype_psf_1m": town_flattype_psf_1m,
+        "town_flattype_psf_3m": town_flattype_psf_3m,
         "town_median_3m": rolling.get("town_median_3m", 0.0),
         "town_txn_volume_3m": rolling.get("town_txn_volume_3m", 0.0),
         "price_momentum_3m": rolling.get("price_momentum_3m", 0.0),
+        "psf_change_1m_vs_3m": psf_change_1m_vs_3m,
+        "national_median_psf_1m": rolling.get(
+            "national_median_psf_1m",
+            rolling.get("national_median_psf_3m", 0.0),
+        ),
         "national_median_psf_3m": rolling.get("national_median_psf_3m", 0.0),
-        "sora_3m": _current_sora_3m(),
+        "sora_3m": current_sora,
+        "sora_3m_change_3m": _sora_3m_change_3m(current_sora),
     }
 
     df = pd.DataFrame([raw])
@@ -3194,6 +3326,7 @@ def _build_scaled_feature_df(town, flat_type, flat_model, floor_area, storey_ran
         "prediction_year": year,
         "prediction_month": month_num,
     })
+    raw_values["market_shock"] = _build_market_shock_explanation(raw_values)
     return df, raw_values
 
 
@@ -3226,6 +3359,74 @@ def _format_rate_label(value):
     except (TypeError, ValueError):
         return "0.0%"
     return f"{pct:+.1f}%"
+
+
+def _build_market_shock_explanation(raw_values):
+    """Explain the latest 1-month-vs-3-month market signal without giving advice."""
+    try:
+        local_change = float(raw_values.get("psf_change_1m_vs_3m", 0.0) or 0.0)
+    except (TypeError, ValueError):
+        local_change = 0.0
+    try:
+        sora_change = float(raw_values.get("sora_3m_change_3m", 0.0) or 0.0)
+    except (TypeError, ValueError):
+        sora_change = 0.0
+
+    abs_change = abs(local_change)
+    if abs_change >= 0.05:
+        severity = "sharp"
+    elif abs_change >= 0.025:
+        severity = "noticeable"
+    else:
+        severity = "stable"
+
+    if local_change > 0.0025:
+        direction = "up"
+        direction_word = "above"
+        movement_word = "upswing"
+    elif local_change < -0.0025:
+        direction = "down"
+        direction_word = "below"
+        movement_word = "cooling"
+    else:
+        direction = "flat"
+        direction_word = "close to"
+        movement_word = "stable movement"
+
+    local_pct = local_change * 100
+    if severity == "stable":
+        title = "Stable recent market"
+        summary = (
+            "The latest local $/sqm is close to its 3-month benchmark, "
+            "so the estimate is not flagging a short-term price shock."
+        )
+    else:
+        title = f"{severity.title()} local {movement_word}"
+        summary = (
+            f"The latest local $/sqm is {abs(local_pct):.1f}% {direction_word} "
+            "its 3-month benchmark, so the estimate can reflect a recent market move "
+            "instead of relying only on smoothed averages."
+        )
+
+    sora_summary = None
+    if abs(sora_change) >= 0.25:
+        sora_direction = "higher" if sora_change > 0 else "lower"
+        sora_summary = (
+            f"3-month SORA is {abs(sora_change):.2f} percentage points "
+            f"{sora_direction} than three months earlier."
+        )
+
+    return {
+        "severity": severity,
+        "direction": direction,
+        "is_sharp": severity == "sharp",
+        "title": title,
+        "summary": summary,
+        "local_psf_change": local_change,
+        "local_psf_change_pct": round(local_pct, 1),
+        "sora_3m_change_3m": round(sora_change, 4),
+        "sora_summary": sora_summary,
+    }
 
 
 def _describe_storey_label(storey_range, midpoint):
@@ -3294,10 +3495,14 @@ def _feature_label(feature_name, raw_values):
         return f"Town 5Y CAGR ({_format_rate_label(raw_values.get(feature_name))})"
     if feature_name in {"month_sin", "month_cos"}:
         return "Seasonal timing"
+    if feature_name == "town_flattype_median_1m":
+        return "Latest local market price (1mo)"
     if feature_name == "town_flattype_median_3m":
         return "Recent market price (3mo)"
     if feature_name == "town_flattype_median_6m":
         return "Recent market price (6mo)"
+    if feature_name == "town_flattype_psf_1m":
+        return "Latest local $/sqm (1mo)"
     if feature_name == "town_flattype_psf_3m":
         return "Recent $/sqm (3mo)"
     if feature_name == "town_median_3m":
@@ -3306,10 +3511,16 @@ def _feature_label(feature_name, raw_values):
         return "Town activity (3mo)"
     if feature_name == "price_momentum_3m":
         return "Price momentum (3mo)"
+    if feature_name == "psf_change_1m_vs_3m":
+        return "Short-term price shock"
+    if feature_name == "national_median_psf_1m":
+        return "National $/sqm (1mo)"
     if feature_name == "national_median_psf_3m":
         return "National $/sqm (3mo)"
     if feature_name == "sora_3m":
         return "Home loan rate (3mo SORA)"
+    if feature_name == "sora_3m_change_3m":
+        return "SORA change (3mo)"
     return feature_name.replace("_", " ").title()
 
 
@@ -3337,15 +3548,20 @@ FEATURE_DESCRIPTIONS = {
     "town_yoy_appreciation_lag1": "How much your town's prices rose (or fell) over the past year. If your town has been heating up, your flat gets a lift.",
     "town_5yr_cagr_lag1": "Your town's average yearly price growth over the past 5 years. Towns with steady long-term growth hold a premium.",
     # Recent local market (rolling windows)
+    "town_flattype_median_1m": "The typical selling price for flats like yours in your town last month. It helps the model react faster when the market moves suddenly.",
     "town_flattype_median_3m": "The typical selling price for flats like yours in your town over the past 3 months. This is the latest market rate for your type of flat.",
     "town_flattype_median_6m": "The typical selling price for flats like yours in your town over the past 6 months. A longer view that smooths out month-to-month noise.",
+    "town_flattype_psf_1m": "The latest price per square metre for similar flats in your town. This catches short-term changes more quickly than the 3-month view.",
     "town_flattype_psf_3m": "The recent price per square metre for flats like yours in your town. Useful for comparing flats of different sizes fairly.",
     "town_median_3m": "The typical selling price across all flat types in your town over the past 3 months. Captures your town's overall price level right now.",
     "town_txn_volume_3m": "How many flats have sold in your town over the past 3 months. Busy towns tend to hold firmer prices; quiet towns can soften.",
     "price_momentum_3m": "Whether your town's prices have been trending up or down recently. Rising momentum adds value; falling momentum pulls it down.",
+    "psf_change_1m_vs_3m": "How different the latest local $/sqm is from the smoother 3-month average. A large positive or negative value flags a short-term market move.",
     # National market context
+    "national_median_psf_1m": "The latest national price per square metre across Singapore. It helps the model react to broad market shifts quickly.",
     "national_median_psf_3m": "The typical price per square metre across all of Singapore in the past 3 months. Sets the backdrop for the overall resale market.",
     "sora_3m": "The 3-month SORA — the benchmark rate banks use for home loans. Higher SORA makes mortgages more expensive and tends to cool prices; lower SORA supports them.",
+    "sora_3m_change_3m": "How much the 3-month SORA has moved compared with three months ago. It captures recent changes in financing pressure.",
     # Seasonal / timing
     "year": "The current year. The model uses this to anchor predictions to today's market level.",
     "month_sin": "Which month of the year. HDB prices shift slightly with the seasons — the model accounts for this.",
@@ -3550,6 +3766,7 @@ def compute_shap_explanation(town, flat_type, flat_model, floor_area, storey_ran
 
     rounded_items.sort(key=lambda item: abs(item["dollar_impact"]), reverse=True)
     display_predicted_price = predicted_price_raw if predicted_price is None else float(predicted_price)
+    market_shock = raw_values.get("market_shock")
     narrative = _generate_shap_ai_summary(
         rounded_items,
         display_predicted_price,
@@ -3574,6 +3791,7 @@ def compute_shap_explanation(town, flat_type, flat_model, floor_area, storey_ran
         "model_note": None,
         "model_label": ARTEFACTS.get("model_label", "Model"),
         "feature_count": len(rounded_items),
+        "market_shock": market_shock,
     }
 
 
@@ -3607,6 +3825,7 @@ def predict_price(town, flat_type, flat_model, floor_area, storey_range,
         prediction_year=raw_values.get("prediction_year"),
         result={
             "model_label": performance.get("label", ARTEFACTS.get("model_label", "Model")),
+            "market_shock": raw_values.get("market_shock"),
         },
     )
 

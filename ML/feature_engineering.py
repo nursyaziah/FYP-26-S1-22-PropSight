@@ -60,6 +60,7 @@ SCALE_COLS = [
     "town_yoy_appreciation_lag1",
     "town_5yr_cagr_lag1",
     "sora_3m",
+    "sora_3m_change_3m",
 ]
 
 FEATURE_COLS = [
@@ -86,14 +87,19 @@ FEATURE_COLS = [
     "town_yoy_appreciation_lag1",
     "town_5yr_cagr_lag1",
     # Rolling comparable features — must be computed before temporal split
+    "town_flattype_median_1m",
     "town_flattype_median_3m",
     "town_flattype_median_6m",
+    "town_flattype_psf_1m",
     "town_flattype_psf_3m",
     "town_median_3m",
     "town_txn_volume_3m",
     "price_momentum_3m",
+    "psf_change_1m_vs_3m",
+    "national_median_psf_1m",
     "national_median_psf_3m",
     "sora_3m",
+    "sora_3m_change_3m",
 ]
 
 TARGET_COL = "log_price"
@@ -322,12 +328,16 @@ def engineer_features(
 
     # ---- SORA integration -----------------------------------------------
     sora_df = load_sora_monthly()
+    sora_df = sora_df.sort_values("year_month").reset_index(drop=True)
+    sora_df["sora_3m_change_3m"] = sora_df["sora_3m"] - sora_df["sora_3m"].shift(3)
+    sora_df["sora_3m_change_3m"] = sora_df["sora_3m_change_3m"].fillna(0.0)
     df["_sora_ym"] = df["year"] * 100 + df["month_num"]
     df = df.merge(sora_df, left_on="_sora_ym", right_on="year_month", how="left")
     sora_median = df["sora_3m"].dropna().median()
     if pd.isna(sora_median):
         sora_median = 0.0
     df["sora_3m"] = df["sora_3m"].fillna(sora_median)
+    df["sora_3m_change_3m"] = df["sora_3m_change_3m"].fillna(0.0)
     df = df.drop(columns=["_sora_ym", "year_month"], errors="ignore")
     print(f"  sora_3m null count after fill: {df['sora_3m'].isna().sum():,}")
 
@@ -377,6 +387,13 @@ def add_rolling_market_features(df: pd.DataFrame) -> pd.DataFrame:
         tf_monthly.groupby(["town", "flat_type"])["tf_med"]
         .transform(lambda x: x.rolling(6, min_periods=1).median().shift(1))
     )
+    tf_monthly["town_flattype_median_1m"] = (
+        tf_monthly.groupby(["town", "flat_type"])["tf_med"]
+        .transform(lambda x: x.rolling(1, min_periods=1).median().shift(1))
+    )
+    tf_monthly["town_flattype_median_1m"] = (
+        tf_monthly.groupby(["town", "flat_type"])["town_flattype_median_1m"].transform(_fill_nan)
+    )
     for col in ["town_flattype_median_3m", "town_flattype_median_6m"]:
         tf_monthly[col] = (
             tf_monthly.groupby(["town", "flat_type"])[col].transform(_fill_nan)
@@ -398,17 +415,35 @@ def add_rolling_market_features(df: pd.DataFrame) -> pd.DataFrame:
         tf_psf_monthly.groupby(["town", "flat_type"])["town_flattype_psf_3m"]
         .transform(_fill_nan)
     )
+    tf_psf_monthly["town_flattype_psf_1m"] = (
+        tf_psf_monthly.groupby(["town", "flat_type"])["tf_psf_med"]
+        .transform(lambda x: x.rolling(1, min_periods=1).median().shift(1))
+    )
+    tf_psf_monthly["town_flattype_psf_1m"] = (
+        tf_psf_monthly.groupby(["town", "flat_type"])["town_flattype_psf_1m"].transform(_fill_nan)
+    )
 
     # Merge all three town×flat_type features at once
     tf_lookup = tf_monthly[
         ["town", "flat_type", "year_month",
-         "town_flattype_median_3m", "town_flattype_median_6m"]
+         "town_flattype_median_1m", "town_flattype_median_3m", "town_flattype_median_6m"]
     ].merge(
-        tf_psf_monthly[["town", "flat_type", "year_month", "town_flattype_psf_3m"]],
+        tf_psf_monthly[
+            ["town", "flat_type", "year_month", "town_flattype_psf_1m", "town_flattype_psf_3m"]
+        ],
         on=["town", "flat_type", "year_month"],
         how="left",
     )
     df = df.merge(tf_lookup, on=["town", "flat_type", "year_month"], how="left")
+
+    df["psf_change_1m_vs_3m"] = np.where(
+        df["town_flattype_psf_3m"] > 0,
+        (df["town_flattype_psf_1m"] - df["town_flattype_psf_3m"]) / df["town_flattype_psf_3m"],
+        0.0,
+    )
+    df["psf_change_1m_vs_3m"] = (
+        df["psf_change_1m_vs_3m"].replace([np.inf, -np.inf], np.nan).fillna(0.0)
+    )
 
     # ---- Feature 4: town_median_3m ----------------------------------------
     t_monthly = (
@@ -477,8 +512,16 @@ def add_rolling_market_features(df: pd.DataFrame) -> pd.DataFrame:
         .fillna(nat_monthly["national_median_psf_3m"].expanding(min_periods=1).mean())
         .fillna(0.0)
     )
+    nat_monthly["national_median_psf_1m"] = (
+        nat_monthly["nat_psf_med"].rolling(1, min_periods=1).median().shift(1)
+    )
+    nat_monthly["national_median_psf_1m"] = (
+        nat_monthly["national_median_psf_1m"]
+        .fillna(nat_monthly["national_median_psf_1m"].expanding(min_periods=1).mean())
+        .fillna(0.0)
+    )
     df = df.merge(
-        nat_monthly[["year_month", "national_median_psf_3m"]],
+        nat_monthly[["year_month", "national_median_psf_1m", "national_median_psf_3m"]],
         on="year_month",
         how="left",
     )
@@ -488,12 +531,16 @@ def add_rolling_market_features(df: pd.DataFrame) -> pd.DataFrame:
 
     # Null summary
     new_features = [
+        "town_flattype_median_1m",
         "town_flattype_median_3m",
         "town_flattype_median_6m",
+        "town_flattype_psf_1m",
         "town_flattype_psf_3m",
         "town_median_3m",
         "town_txn_volume_3m",
         "price_momentum_3m",
+        "psf_change_1m_vs_3m",
+        "national_median_psf_1m",
         "national_median_psf_3m",
     ]
     print("  Rolling feature null counts after filling:")
@@ -743,8 +790,10 @@ def save_artefacts(
     # Rolling stats snapshot — keyed by (town, flat_type) for serving-time lookup.
     # Use val+test splits (most recent data) so the snapshot reflects current market.
     rolling_cols = [
-        "town_flattype_median_3m", "town_flattype_median_6m", "town_flattype_psf_3m",
-        "town_median_3m", "town_txn_volume_3m", "price_momentum_3m", "national_median_psf_3m",
+        "town_flattype_median_1m", "town_flattype_median_3m", "town_flattype_median_6m",
+        "town_flattype_psf_1m", "town_flattype_psf_3m", "town_median_3m",
+        "town_txn_volume_3m", "price_momentum_3m", "psf_change_1m_vs_3m",
+        "national_median_psf_1m", "national_median_psf_3m",
     ]
     recent_parts = [splits[k] for k in ("val", "test", "future_holdout") if k in splits]
     if recent_parts:

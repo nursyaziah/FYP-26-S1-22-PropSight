@@ -407,6 +407,9 @@ body > nav, body > footer, body > header {
   color: rgba(255,255,255,0.9);
 }
 .pbadge-mape { background: rgba(245,158,11,0.12); color: #fbbf24; border: 1px solid rgba(245,158,11,0.25); }
+.pbadge-shock { background: rgba(14,165,233,0.13); color: #bae6fd; border: 1px solid rgba(125,211,252,0.28); }
+.pbadge-shock.up { background: rgba(16,185,129,0.13); color: #bbf7d0; border-color: rgba(52,211,153,0.28); }
+.pbadge-shock.down { background: rgba(248,113,113,0.13); color: #fecaca; border-color: rgba(248,113,113,0.28); }
 
 .price-trained {
   font-size: 10.5px;
@@ -431,6 +434,27 @@ body > nav, body > footer, body > header {
 }
 .price-disclaimer .bi { color: #fbbf24; font-size: 14px; flex-shrink: 0; margin-top: 1px; }
 .price-disclaimer strong { color: #fde68a; font-weight: 700; }
+
+.market-shock-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 10px auto 0;
+  max-width: 580px;
+  padding: 10px 14px;
+  background: rgba(14,165,233,0.12);
+  border: 1px solid rgba(125,211,252,0.26);
+  border-radius: 10px;
+  color: rgba(224,242,254,0.96);
+  font-size: 11.5px;
+  line-height: 1.55;
+  text-align: left;
+}
+.market-shock-note.up { background: rgba(16,185,129,0.12); border-color: rgba(52,211,153,0.26); color: rgba(220,252,231,0.96); }
+.market-shock-note.down { background: rgba(248,113,113,0.12); border-color: rgba(248,113,113,0.26); color: rgba(254,226,226,0.96); }
+.market-shock-note .bi { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+.market-shock-title { display: block; font-weight: 800; color: #fff; margin-bottom: 2px; }
+.market-shock-sub { display: block; opacity: 0.88; margin-top: 2px; }
 
 /* Action bar */
 .price-actions {
@@ -1221,6 +1245,11 @@ body > nav, body > footer, body > header {
           <span class="pbadge pbadge-mape">MAPE &plusmn;{{ result.mape }}%</span>
           {% endif %}
           <span class="pbadge pbadge-glass">{{ result.model_label }}</span>
+          {% if result.market_shock and result.market_shock.severity != 'stable' %}
+          <span class="pbadge pbadge-shock {{ result.market_shock.direction }}">
+            {{ result.market_shock.title }}
+          </span>
+          {% endif %}
         </div>
 
         {% if result.model_trained_at %}
@@ -1234,6 +1263,19 @@ body > nav, body > footer, body > header {
           <i class="bi bi-exclamation-triangle-fill"></i>
           <span>Based on historical market data only. Does not account for sudden external shocks like <strong>wars, pandemics, financial crises, or unannounced policy changes</strong>.</span>
         </div>
+
+        {% if result.market_shock and result.market_shock.severity != 'stable' %}
+        <div class="market-shock-note {{ result.market_shock.direction }}">
+          <i class="bi bi-activity"></i>
+          <span>
+            <span class="market-shock-title">{{ result.market_shock.title }}</span>
+            {{ result.market_shock.summary }}
+            {% if result.market_shock.sora_summary %}
+            <span class="market-shock-sub">{{ result.market_shock.sora_summary }}</span>
+            {% endif %}
+          </span>
+        </div>
+        {% endif %}
       </div>
 
       {# Action buttons #}

@@ -17,15 +17,20 @@
     "lease_commence_date",
     "month_cos",
     "month_sin",
+    "national_median_psf_1m",
     "national_median_psf_3m",
     "price_momentum_3m",
+    "psf_change_1m_vs_3m",
     "remaining_lease",
     "sora_3m",
+    "sora_3m_change_3m",
     "storey_midpoint",
     "town_5yr_cagr_lag1",
     "town_enc",
+    "town_flattype_median_1m",
     "town_flattype_median_3m",
     "town_flattype_median_6m",
+    "town_flattype_psf_1m",
     "town_flattype_psf_3m",
     "town_median_3m",
     "town_txn_volume_3m",
@@ -34,5 +39,5 @@
   ],
   "n_train_rows": 255125,
   "optuna_objective": "rmse",
-  "timestamp": "2026-04-17T07:41:03Z"
+  "timestamp": "2026-04-28T07:34:07Z"
 }
