@@ -146,6 +146,14 @@ body.propsight-app {
   box-shadow: 0 2px 6px rgba(37,99,235,0.35);
   cursor: pointer;
 }
+.pf-range.at-max::-webkit-slider-thumb {
+  border-color: #94a3b8;
+  box-shadow: 0 2px 6px rgba(148,163,184,0.35);
+}
+.pf-range.at-max::-moz-range-thumb {
+  border-color: #94a3b8;
+  box-shadow: 0 2px 6px rgba(148,163,184,0.35);
+}
 .btn-estimate {
   width: 100%;
   padding: 13px 28px;
@@ -1149,6 +1157,8 @@ function updateSliderTrack(el) {
     var span = max - min;
     var pct = span <= 0 ? 0 : ((Number(el.value) - min) / span * 100).toFixed(1);
     el.style.background = 'linear-gradient(to right,#2563eb ' + pct + '%,#e2e8f0 ' + pct + '%)';
+    var val = Number(el.value);
+    el.classList.toggle('at-max', isFinite(val) && isFinite(max) && val >= max);
 }
 
 function bindRange(rangeId, valueId) {
