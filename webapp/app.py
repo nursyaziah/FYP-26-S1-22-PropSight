@@ -361,6 +361,10 @@ PREMIUM_DAILY_COMPARISON_AI_LIMIT = _env_int("PREMIUM_DAILY_COMPARISON_AI_LIMIT"
 MODEL_STALE_AFTER_DAYS = _env_int("MODEL_STALE_AFTER_DAYS", 45)
 SORA_TTL_SECONDS = max(300, _env_int("SORA_TTL_SECONDS", 6 * 60 * 60))
 SORA_FALLBACK_3M = _env_float("SORA_FALLBACK_3M", 2.5)
+MAS_API_KEY = (
+    os.environ.get("MAS_API_KEY")
+    or os.environ.get("MAS_KEYID", "")
+).strip()
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY = (
@@ -1071,24 +1075,103 @@ def _winner_metrics_snapshot(metrics):
 # SORA rate — refreshed periodically so long-lived app processes do not drift
 # ---------------------------------------------------------------------------
 
-def _fetch_current_sora_from_api() -> float:
-    """Fetch the most recent 3-month compounded SORA from MAS API."""
-    _MAS_SORA_URL = (
-        "https://eservices.mas.gov.sg/api/action/datastore/search.json"
-        "?resource_id=9a0bf149-308c-4bd2-832d-76c8e6cb47ed&limit=30&sort=end_of_day+desc"
-    )
-    req = urllib_request.Request(
-        _MAS_SORA_URL,
-        headers={"User-Agent": "PropSight/1.0 (HDB Resale Price Prediction)"},
-    )
+def _extract_mas_records(data):
+    """Extract rows from MAS gateway or legacy datastore response wrappers."""
+    if isinstance(data, list):
+        return [row for row in data if isinstance(row, dict)]
+    if not isinstance(data, dict):
+        return []
+
+    result = data.get("result")
+    if isinstance(result, dict) and isinstance(result.get("records"), list):
+        return [row for row in result["records"] if isinstance(row, dict)]
+
+    for key in ("records", "items", "data", "value", "elements", "rows"):
+        rows = data.get(key)
+        if isinstance(rows, list):
+            return [row for row in rows if isinstance(row, dict)]
+
+    if {"end_of_day", "comp_sora_3m"}.issubset(data):
+        return [data]
+    return []
+
+
+def _read_mas_json(req):
     with urllib_request.urlopen(req, timeout=10) as resp:
-        data = json.loads(resp.read().decode("utf-8-sig"))
-    records = data.get("result", {}).get("records", [])
+        content_type = resp.headers.get("Content-Type", "")
+        raw = resp.read()
+
+    if "html" in content_type.lower() or "xml" in content_type.lower():
+        raise ValueError(f"MAS returned {content_type or 'non-JSON'}")
+    return json.loads(raw.decode("utf-8-sig"))
+
+
+def _latest_comp_sora_3m(records) -> float:
+    records = sorted(
+        records,
+        key=lambda rec: str(rec.get("end_of_day") or rec.get("published_date") or ""),
+        reverse=True,
+    )
     for rec in records:
         val = rec.get("comp_sora_3m")
         if val not in (None, "", "-"):
             return float(val)
     raise ValueError("MAS SORA response did not include comp_sora_3m")
+
+
+def _fetch_current_sora_from_gateway() -> float:
+    """Fetch the most recent 3-month compounded SORA from MAS API Gateway."""
+    if not MAS_API_KEY:
+        raise ValueError("MAS_API_KEY / MAS_KEYID is not configured.")
+
+    start_date = (datetime.now(timezone.utc) - timedelta(days=45)).date().isoformat()
+    query = parse.urlencode({
+        "$select": "end_of_day,comp_sora_3m",
+        "$filter": f"end_of_day >= '{start_date}' and comp_sora_3m is not null",
+        "$orderby": "end_of_day desc",
+    })
+    mas_sora_url = (
+        "https://eservices.mas.gov.sg/apimg-gw/server/"
+        "monthly_statistical_bulletin_non610mssql/domestic_interest_rates_daily/"
+        f"views/domestic_interest_rates_daily?{query}"
+    )
+    req = urllib_request.Request(
+        mas_sora_url,
+        headers={
+            "User-Agent": "PropSight/1.0 (HDB Resale Price Prediction)",
+            "Accept": "application/json",
+            "KeyId": MAS_API_KEY,
+        },
+    )
+    data = _read_mas_json(req)
+    return _latest_comp_sora_3m(_extract_mas_records(data))
+
+
+def _fetch_current_sora_from_legacy_api() -> float:
+    """Fetch the most recent 3-month compounded SORA from the old MAS API."""
+    mas_sora_url = (
+        "https://eservices.mas.gov.sg/api/action/datastore/search.json"
+        "?resource_id=9a0bf149-308c-4bd2-832d-76c8e6cb47ed&limit=30&sort=end_of_day+desc"
+    )
+    req = urllib_request.Request(
+        mas_sora_url,
+        headers={"User-Agent": "PropSight/1.0 (HDB Resale Price Prediction)"},
+    )
+    data = _read_mas_json(req)
+    return _latest_comp_sora_3m(_extract_mas_records(data))
+
+
+def _fetch_current_sora_from_api() -> float:
+    """Fetch the most recent 3-month compounded SORA from MAS."""
+    if MAS_API_KEY:
+        try:
+            return _fetch_current_sora_from_gateway()
+        except Exception as exc:
+            app.logger.warning(
+                "MAS API Gateway SORA fetch failed; trying legacy API: %s",
+                exc,
+            )
+    return _fetch_current_sora_from_legacy_api()
 
 
 CURRENT_SORA_3M: float | None = None

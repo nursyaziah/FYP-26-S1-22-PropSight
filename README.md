@@ -112,6 +112,12 @@ ADMIN_EMAIL=admin@example.com
 ADMIN_PASSWORD=<strong-random-password>
 ```
 
+Optional, for the current MAS API Gateway SORA endpoint:
+
+```env
+MAS_API_KEY=<mas-keyid>
+```
+
 Variables needed for Supabase SQL sync and preferred ML training source:
 
 ```env
