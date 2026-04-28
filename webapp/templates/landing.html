@@ -2139,13 +2139,11 @@
                                     class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 rounded-pill">High
                                     Floor</span>
                             </div>
-                            <p class="text-muted small mb-1 fw-medium">AI Predicted Resale Value</p>
                             <h3 class="fw-bold text-primary mb-3" style="letter-spacing: -1px;">$712,000</h3>
                             <div class="progress" style="height: 6px; border-radius: 10px;">
                                 <div class="progress-bar bg-primary" role="progressbar"
                                     style="width: 80%; border-radius: 10px;"></div>
                             </div>
-                            <p class="text-muted small mt-2 mb-0 text-center fw-medium">80% Confidence Interval</p>
                         </div>
 
                         <div class="glass-card-2">
@@ -2656,7 +2654,7 @@
                         </div>
 
                         <div class="ai-terminal mb-4">
-                            <div class="t-line">> Cross-referencing 150k resale records...</div>
+                            <div class="t-line">> Cross-referencing <span id="ai-resale-record-count">{% if landing_stats.total_txns is not none %}{{ "{:,}".format(landing_stats.total_txns) }}+{% else %}—{% endif %}</span> resale records...</div>
                             <div class="t-line">> Calculating MRT proximity premium...</div>
                             <div class="t-line text-success">> Analysis Optimized.</div>
                         </div>
@@ -3465,17 +3463,26 @@
         }, { threshold: 0.5 });
         if (statsSection) counterObserver.observe(statsSection);
 
+        function formatTxnCount(value) {
+            if (value == null || Number.isNaN(Number(value))) return '—';
+            return Number(value).toLocaleString() + '+';
+        }
+
         function applyLandingStatsFromApi(s) {
             if (!s) return;
             const tx = document.getElementById('landing-stat-txns');
+            const aiTx = document.getElementById('ai-resale-record-count');
             const mp = document.getElementById('landing-stat-mape');
             const tw = document.getElementById('landing-stat-towns');
             const mm = document.getElementById('landing-meta-model');
             const mu = document.getElementById('landing-meta-updated');
             const ma = document.getElementById('landing-meta-api');
             if (tx && s.total_txns != null) {
-                tx.textContent = Number(s.total_txns).toLocaleString() + '+';
+                tx.textContent = formatTxnCount(s.total_txns);
                 tx.classList.remove('counter');
+            }
+            if (aiTx && s.total_txns != null) {
+                aiTx.textContent = formatTxnCount(s.total_txns);
             }
             if (mp && s.mape != null) {
                 mp.textContent = Number(s.mape).toFixed(2) + '%';
