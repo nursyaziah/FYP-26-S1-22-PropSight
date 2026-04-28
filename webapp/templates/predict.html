@@ -182,7 +182,7 @@ body > nav, body > footer, body > header {
   cursor: pointer;
   outline: none;
   background: linear-gradient(to right, #2563eb 50%, #e2e8f0 50%);
-  transition: background 0.1s;
+  transition: none;
 }
 .pf-range::-webkit-slider-thumb {
   appearance: none;
@@ -1578,8 +1578,11 @@ body > nav, body > footer, body > header {
    SLIDER TRACK FILL
    ================================================================ */
 function updateSliderTrack(el) {
-  var min = Number(el.min) || 0, max = Number(el.max) || 100;
-  var pct = ((Number(el.value) - min) / (max - min) * 100).toFixed(1);
+  var min = Number(el.min) || 0;
+  var max = Number(el.max) || 100;
+  var span = max - min;
+  var pct = span <= 0 ? 0 : ((Number(el.value) - min) / span * 100);
+  pct = Math.max(0, Math.min(100, pct));
   el.style.background = 'linear-gradient(to right,#2563eb ' + pct + '%,#e2e8f0 ' + pct + '%)';
 }
 

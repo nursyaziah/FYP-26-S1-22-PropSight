@@ -1200,6 +1200,7 @@ function bindCascade(prefix) {
     var townToken = 0;
     var ftToken = 0;
     var streetToken = 0;
+    var addrToken = 0;
 
     function beginLoad() {
         pendingCompareRequests++;
@@ -1208,6 +1209,109 @@ function bindCascade(prefix) {
     function endLoad() {
         pendingCompareRequests = Math.max(0, pendingCompareRequests - 1);
         if (pendingCompareRequests === 0) setCompareSubmitState('idle');
+    }
+
+    function addrQS() {
+        var qs = '';
+        if (streetSelect && streetSelect.value) qs += '&street_name=' + encodeURIComponent(streetSelect.value);
+        if (blockSelect && blockSelect.value) qs += '&block=' + encodeURIComponent(blockSelect.value);
+        return qs;
+    }
+
+    function setBounds(rangeEl, valueEl, min, max, preferred, fallback) {
+        if (!rangeEl) return;
+        var nmin = Number(min);
+        var nmax = Number(max);
+        if (!isFinite(nmin) || !isFinite(nmax) || nmin > nmax) return;
+        rangeEl.min = nmin;
+        rangeEl.max = nmax;
+
+        var cur = Number(preferred);
+        if (!isFinite(cur)) cur = Number(fallback);
+        if (!isFinite(cur)) cur = nmin;
+        cur = Math.max(nmin, Math.min(nmax, cur));
+        cur = Math.round(cur);
+        rangeEl.value = cur;
+        if (valueEl) valueEl.textContent = String(cur);
+        updateSliderTrack(rangeEl);
+    }
+
+    function getOptionValues(selectEl) {
+        return Array.from(selectEl.options)
+            .map(function(opt) { return opt.value; })
+            .filter(function(v) { return Boolean(v); });
+    }
+
+    function fillSelectOptions(selectEl, values, preferred, fallback) {
+        if (!selectEl || !Array.isArray(values) || !values.length) return false;
+        var normalized = values.map(String);
+        var selected = normalized.includes(String(preferred || ''))
+            ? String(preferred)
+            : (normalized.includes(String(fallback || '')) ? String(fallback) : normalized[0]);
+        selectEl.innerHTML = normalized.map(function(v) {
+            return '<option value="' + v + '"' + (v === selected ? ' selected' : '') + '>' + v + '</option>';
+        }).join('');
+        return true;
+    }
+
+    async function refreshForAddress() {
+        var town = townSelect.value;
+        if (!town) return;
+        var currentFlatType = flatTypeSelect.value;
+        var token = ++addrToken;
+        var qs = addrQS();
+        beginLoad();
+        try {
+            var responses = await Promise.all([
+                fetch('/api/flat_type_breakdown?town=' + encodeURIComponent(town) + qs),
+                fetch('/api/lease_year_range?town=' + encodeURIComponent(town) + qs),
+                currentFlatType ? fetch('/api/floor_area_stats?town=' + encodeURIComponent(town) + '&flat_type=' + encodeURIComponent(currentFlatType) + qs) : Promise.resolve(null),
+                currentFlatType ? fetch('/api/available_models?town=' + encodeURIComponent(town) + '&flat_type=' + encodeURIComponent(currentFlatType) + qs) : Promise.resolve(null),
+                currentFlatType ? fetch('/api/available_storey_ranges?town=' + encodeURIComponent(town) + '&flat_type=' + encodeURIComponent(currentFlatType) + qs) : Promise.resolve(null)
+            ]);
+            if (token !== addrToken) return;
+
+            if (responses[0] && responses[0].ok) {
+                var typesData = await responses[0].json();
+                var validTypes = typesData.filter(function(d) { return d.txn_count > 0; }).map(function(d) { return d.flat_type; });
+                if (!fillSelectOptions(flatTypeSelect, validTypes, currentFlatType, validTypes[0])) {
+                    flatTypeSelect.innerHTML = origFlatTypeOptions;
+                }
+            }
+
+            if (responses[1] && responses[1].ok) {
+                var leaseData = await responses[1].json();
+                setBounds(leaseRange, leaseVal, leaseData.min_year, leaseData.max_year, leaseRange.value, leaseData.avg_year);
+            }
+
+            if (responses[2] && responses[2].ok) {
+                var floorData = await responses[2].json();
+                setBounds(floorRange, floorVal, floorData.min_area, floorData.max_area, floorRange.value, floorData.avg_area);
+            }
+
+            if (responses[3] && responses[3].ok) {
+                var modelData = await responses[3].json();
+                if (!fillSelectOptions(flatModelSelect, modelData.models || [], flatModelSelect.value, getOptionValues(flatModelSelect)[0])) {
+                    flatModelSelect.innerHTML = origFlatModelOptions;
+                }
+            }
+
+            if (responses[4] && responses[4].ok) {
+                var storeyData = await responses[4].json();
+                var storeys = storeyData.storey_ranges || [];
+                var mid = storeys.length ? storeys[Math.floor(storeys.length / 2)] : '';
+                if (!fillSelectOptions(storeyRangeSelect, storeys, storeyRangeSelect.value, mid)) {
+                    storeyRangeSelect.innerHTML = origStoreyOptions;
+                }
+            }
+
+            if (flatTypeSelect.value && flatTypeSelect.value !== currentFlatType) {
+                flatTypeSelect.dispatchEvent(new Event('change'));
+            }
+        } catch (e) {
+        } finally {
+            endLoad();
+        }
     }
 
     townSelect.addEventListener('change', async function() {
@@ -1226,21 +1330,15 @@ function bindCascade(prefix) {
 
             if (responses[0].ok) {
                 var data = await responses[0].json();
-                leaseRange.min = data.min_year;
-                leaseRange.max = data.max_year;
-                leaseRange.value = data.avg_year;
-                leaseVal.textContent = data.avg_year;
-                updateSliderTrack(leaseRange);
+                setBounds(leaseRange, leaseVal, data.min_year, data.max_year, leaseRange.value, data.avg_year);
             }
 
             if (responses[1].ok) {
                 var data2 = await responses[1].json();
                 var validTypes = data2.filter(function(d) { return d.txn_count > 0; }).map(function(d) { return d.flat_type; });
-                Array.from(flatTypeSelect.options).forEach(function(opt) {
-                    if (opt.value && validTypes.length > 0) {
-                        opt.disabled = !validTypes.includes(opt.value);
-                    }
-                });
+                if (!fillSelectOptions(flatTypeSelect, validTypes, flatTypeSelect.value, validTypes[0])) {
+                    flatTypeSelect.innerHTML = origFlatTypeOptions;
+                }
             }
 
             if (responses[2].ok && streetSelect) {
@@ -1251,11 +1349,10 @@ function bindCascade(prefix) {
         } catch(e) {
             flatTypeSelect.innerHTML = origFlatTypeOptions;
         } finally {
-            flatModelSelect.innerHTML = origFlatModelOptions;
-            storeyRangeSelect.innerHTML = origStoreyOptions;
             if (blockSelect) blockSelect.innerHTML = '<option value="">Select block...</option>';
             endLoad();
         }
+        if (flatTypeSelect.value) flatTypeSelect.dispatchEvent(new Event('change'));
     });
 
     if (streetSelect) {
@@ -1274,6 +1371,13 @@ function bindCascade(prefix) {
                         (data.blocks || []).map(function(b) { return '<option value="' + b + '">' + b + '</option>'; }).join('');
                 }
             } catch(e) {}
+            refreshForAddress();
+        });
+    }
+
+    if (blockSelect) {
+        blockSelect.addEventListener('change', function() {
+            refreshForAddress();
         });
     }
 
@@ -1282,37 +1386,32 @@ function bindCascade(prefix) {
         var flatType = this.value;
         if (!town || !flatType) return;
         var token = ++ftToken;
+        var qs = addrQS();
         beginLoad();
 
         try {
             var responses = await Promise.all([
-                fetch('/api/floor_area_stats?town=' + encodeURIComponent(town) + '&flat_type=' + encodeURIComponent(flatType)),
-                fetch('/api/available_models?town=' + encodeURIComponent(town) + '&flat_type=' + encodeURIComponent(flatType)),
-                fetch('/api/available_storey_ranges?town=' + encodeURIComponent(town) + '&flat_type=' + encodeURIComponent(flatType))
+                fetch('/api/floor_area_stats?town=' + encodeURIComponent(town) + '&flat_type=' + encodeURIComponent(flatType) + qs),
+                fetch('/api/available_models?town=' + encodeURIComponent(town) + '&flat_type=' + encodeURIComponent(flatType) + qs),
+                fetch('/api/available_storey_ranges?town=' + encodeURIComponent(town) + '&flat_type=' + encodeURIComponent(flatType) + qs)
             ]);
             if (token !== ftToken) return;
 
             if (responses[0].ok) {
                 var data = await responses[0].json();
-                floorRange.min = data.min_area;
-                floorRange.max = data.max_area;
-                floorRange.value = data.avg_area;
-                floorVal.textContent = data.avg_area;
-                updateSliderTrack(floorRange);
+                setBounds(floorRange, floorVal, data.min_area, data.max_area, floorRange.value, data.avg_area);
             }
             if (responses[1].ok) {
                 var data2 = await responses[1].json();
-                if (data2.models && data2.models.length > 0) {
-                    flatModelSelect.innerHTML = data2.models.map(function(m) { return '<option value="' + m + '">' + m + '</option>'; }).join('');
-                } else {
+                if (!fillSelectOptions(flatModelSelect, data2.models || [], flatModelSelect.value, getOptionValues(flatModelSelect)[0])) {
                     flatModelSelect.innerHTML = origFlatModelOptions;
                 }
             }
             if (responses[2].ok) {
                 var data3 = await responses[2].json();
-                if (data3.storey_ranges && data3.storey_ranges.length > 0) {
-                    storeyRangeSelect.innerHTML = data3.storey_ranges.map(function(sr) { return '<option value="' + sr + '">' + sr + '</option>'; }).join('');
-                } else {
+                var storeys = data3.storey_ranges || [];
+                var mid = storeys.length ? storeys[Math.floor(storeys.length / 2)] : '';
+                if (!fillSelectOptions(storeyRangeSelect, storeys, storeyRangeSelect.value, mid)) {
                     storeyRangeSelect.innerHTML = origStoreyOptions;
                 }
             }
@@ -1332,21 +1431,74 @@ function bindCascade(prefix) {
         var prefilledFloor = floorRange.value;
         var prefilledLease = leaseRange.value;
 
-        townSelect.dispatchEvent(new Event('change'));
-
-        setTimeout(function() {
-            if (prefilledFlatType) {
-                flatTypeSelect.value = prefilledFlatType;
-                flatTypeSelect.dispatchEvent(new Event('change'));
-
-                setTimeout(function() {
-                    if (prefilledFlatModel) flatModelSelect.value = prefilledFlatModel;
-                    if (prefilledStorey) storeyRangeSelect.value = prefilledStorey;
-                    if (prefilledFloor) { floorRange.value = prefilledFloor; floorVal.textContent = prefilledFloor; updateSliderTrack(floorRange); }
-                    if (prefilledLease) { leaseRange.value = prefilledLease; leaseVal.textContent = prefilledLease; updateSliderTrack(leaseRange); }
-                }, 500);
-            }
-        }, 500);
+        (async function initPrefill() {
+            var t = townSelect.value;
+            var qs = addrQS();
+            try {
+                var responses = await Promise.all([
+                    fetch('/api/available_streets?town=' + encodeURIComponent(t)),
+                    fetch('/api/flat_type_breakdown?town=' + encodeURIComponent(t) + qs),
+                    fetch('/api/lease_year_range?town=' + encodeURIComponent(t) + qs)
+                ]);
+                if (responses[0].ok && streetSelect) {
+                    var streetsData = await responses[0].json();
+                    streetSelect.innerHTML = '<option value="">Select street...</option>' +
+                        (streetsData.streets || []).map(function(s) {
+                            return '<option value="' + s + '"' + (s === (streetSelect.value || '') ? ' selected' : '') + '>' + s + '</option>';
+                        }).join('');
+                }
+                if (streetSelect && streetSelect.value && blockSelect) {
+                    var blockResp = await fetch('/api/available_blocks?town=' + encodeURIComponent(t) + '&street_name=' + encodeURIComponent(streetSelect.value));
+                    if (blockResp.ok) {
+                        var blockData = await blockResp.json();
+                        blockSelect.innerHTML = '<option value="">Select block...</option>' +
+                            (blockData.blocks || []).map(function(b) {
+                                return '<option value="' + b + '"' + (b === (blockSelect.value || '') ? ' selected' : '') + '>' + b + '</option>';
+                            }).join('');
+                    }
+                }
+                if (responses[1].ok) {
+                    var typeData = await responses[1].json();
+                    var validTypes = typeData.filter(function(x) { return x.txn_count > 0; }).map(function(x) { return x.flat_type; });
+                    if (!fillSelectOptions(flatTypeSelect, validTypes, prefilledFlatType, validTypes[0])) {
+                        flatTypeSelect.innerHTML = origFlatTypeOptions;
+                    }
+                }
+                if (responses[2].ok) {
+                    var leaseData = await responses[2].json();
+                    setBounds(leaseRange, leaseVal, leaseData.min_year, leaseData.max_year, prefilledLease, leaseData.avg_year);
+                }
+                if (flatTypeSelect.value) {
+                    await (async function() {
+                        var ft = flatTypeSelect.value;
+                        var addr = addrQS();
+                        var depResponses = await Promise.all([
+                            fetch('/api/floor_area_stats?town=' + encodeURIComponent(t) + '&flat_type=' + encodeURIComponent(ft) + addr),
+                            fetch('/api/available_models?town=' + encodeURIComponent(t) + '&flat_type=' + encodeURIComponent(ft) + addr),
+                            fetch('/api/available_storey_ranges?town=' + encodeURIComponent(t) + '&flat_type=' + encodeURIComponent(ft) + addr)
+                        ]);
+                        if (depResponses[0].ok) {
+                            var floorData = await depResponses[0].json();
+                            setBounds(floorRange, floorVal, floorData.min_area, floorData.max_area, prefilledFloor, floorData.avg_area);
+                        }
+                        if (depResponses[1].ok) {
+                            var modelData = await depResponses[1].json();
+                            if (!fillSelectOptions(flatModelSelect, modelData.models || [], prefilledFlatModel, (modelData.models || [])[0])) {
+                                flatModelSelect.innerHTML = origFlatModelOptions;
+                            }
+                        }
+                        if (depResponses[2].ok) {
+                            var storeyData = await depResponses[2].json();
+                            var storeys = storeyData.storey_ranges || [];
+                            var mid = storeys.length ? storeys[Math.floor(storeys.length / 2)] : '';
+                            if (!fillSelectOptions(storeyRangeSelect, storeys, prefilledStorey, mid)) {
+                                storeyRangeSelect.innerHTML = origStoreyOptions;
+                            }
+                        }
+                    })();
+                }
+            } catch (e) {}
+        })();
     }
 }
 
