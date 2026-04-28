@@ -5543,12 +5543,6 @@ def api_predicted_heatmap():
     if access_error:
         return access_error
 
-    district_data = _get_prediction_map_seed_data()
-    if not district_data:
-        return jsonify({"error": "Town map data is currently unavailable."}), 503
-
-    # Keep map-wide comparison intentionally high-level. Detailed floor area,
-    # lease, street, and block analysis belongs in Predict/Analytics.
     requested_flat_type = request.args.get("flat_type", "").strip()
     scenario_flat_type = requested_flat_type if requested_flat_type in MAP_FLAT_TYPES else ""
     scenario_input = {
@@ -5556,6 +5550,18 @@ def api_predicted_heatmap():
         "flat_model": request.args.get("flat_model", "").strip() if scenario_flat_type else "",
         "storey_range": request.args.get("storey_range", "").strip() if scenario_flat_type else "",
     }
+    return jsonify(_build_predicted_heatmap_results(scenario_input=scenario_input))
+
+
+def _build_predicted_heatmap_results(scenario_input=None):
+    """Shared town estimate payload used by map page and landing preview."""
+    district_data = _get_prediction_map_seed_data()
+    if not district_data:
+        return []
+
+    # Keep map-wide comparison intentionally high-level. Detailed floor area,
+    # lease, street, and block analysis belongs in Predict/Analytics.
+    scenario_input = dict(scenario_input or {})
     use_scenario = any(scenario_input.values())
 
     comparison_by_town = {
@@ -5636,7 +5642,13 @@ def api_predicted_heatmap():
             "lease_commence": _coerce_int(profile["lease_commence"], _default_lease_year_range()["avg_year"]),
         })
 
-    return jsonify(results)
+    return results
+
+
+@app.route("/api/public/predicted_heatmap_preview")
+def api_public_predicted_heatmap_preview():
+    """Public endpoint mirroring map-page heatmap values for landing preview."""
+    return jsonify(_build_predicted_heatmap_results())
 
 
 @app.route("/api/price_trend")
@@ -5838,7 +5850,9 @@ def api_public_landing_stats():
 @app.route("/api/public/location_summary")
 def api_public_location_summary():
     """Per-town centroids with blurred price bucket (1-5) for guest teaser map."""
-    town_list = [dict(r) for r in _get_district_summary_data()]
+    # Use the map seed helper so we always have centroid fallback rows even when
+    # district summary RPC returns empty in guest sessions/local dev.
+    town_list = [dict(r) for r in _get_prediction_map_seed_data()]
     town_list = [t for t in town_list if t.get("lat") and t.get("lng")]
     town_list.sort(key=lambda x: x["avg_price"] or 0)
     n = len(town_list)

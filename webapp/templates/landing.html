@@ -2300,7 +2300,7 @@
                 <div class="tab-indicator" id="tab-indicator"></div>
                 <div class="f-tab active" onclick="switchTab('tab1', this)"><i class="bi bi-magic"></i> Get Valuations
                     and Predictions</div>
-                <div class="f-tab" onclick="switchTab('tab2', this)"><i class="bi bi-map-fill"></i> Heatmap</div>
+                <div id="heatmapTabButton" class="f-tab" onclick="switchTab('tab2', this)"><i class="bi bi-map-fill"></i> Heatmap</div>
                 <div class="f-tab" onclick="switchTab('tab3', this)"><i class="bi bi-bar-chart-line-fill"></i> Market
                     Analytics</div>
                 <div class="f-tab" onclick="switchTab('tab4', this)"><i class="bi bi-layout-split"></i> Compare
@@ -3068,12 +3068,46 @@
             var el = document.getElementById('landingRealMap');
             var loadingNotice = document.getElementById('landingMapLoadingNotice');
             if (!el) return;
+            var LANDING_MAP_LOADING_MIN_MS = 600;
+            if (!window.__landingLoadingState) {
+                window.__landingLoadingState = {
+                    shownAt: 0,
+                    hideTimer: null,
+                    isVisible: false
+                };
+            }
+            var loadingState = window.__landingLoadingState;
 
             function setLandingMapLoading(isLoading, message) {
                 if (!loadingNotice) return;
                 var textEl = loadingNotice.querySelector('span:last-child');
                 if (textEl && message) textEl.textContent = message;
-                loadingNotice.classList.toggle('is-hidden', !isLoading);
+                if (isLoading) {
+                    if (loadingState.hideTimer) {
+                        clearTimeout(loadingState.hideTimer);
+                        loadingState.hideTimer = null;
+                    }
+                    if (!loadingState.isVisible) {
+                        loadingState.shownAt = Date.now();
+                        loadingState.isVisible = true;
+                    }
+                    loadingNotice.classList.remove('is-hidden');
+                    return;
+                }
+
+                var elapsed = Date.now() - (loadingState.shownAt || 0);
+                var remaining = Math.max(0, LANDING_MAP_LOADING_MIN_MS - elapsed);
+                if (remaining === 0) {
+                    loadingNotice.classList.add('is-hidden');
+                    loadingState.isVisible = false;
+                    return;
+                }
+                if (loadingState.hideTimer) clearTimeout(loadingState.hideTimer);
+                loadingState.hideTimer = setTimeout(function () {
+                    loadingNotice.classList.add('is-hidden');
+                    loadingState.isVisible = false;
+                    loadingState.hideTimer = null;
+                }, remaining);
             }
 
             if (!window.__landingMapReady || !window.__landingDataReady) {
@@ -3098,12 +3132,6 @@
                 return landingLerpColor('#f1f5f9', '#dc2626', (t - 0.5) / 0.5);
             }
 
-            function escapeLandingLabel(s) {
-                return String(s == null ? '' : s).replace(/[&<>"']/g, function (ch) {
-                    return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
-                });
-            }
-
             function loadLandingChoropleth(map, data) {
                 if (!Array.isArray(data) || !data.length || !map) return;
                 var vals = data.map(function (d) {
@@ -3120,32 +3148,36 @@
                     if (!d.lat || !d.lng) return;
                     var val = Number(d.predicted_price || 0);
                     var color = landingChoroplethColor(val, min, max);
-                    var townLabel = escapeLandingLabel(d.town);
-                    var priceLabel = Number.isFinite(val) && val > 0
-                        ? '$' + Math.round(val).toLocaleString()
-                        : 'N/A';
                     L.circle([d.lat, d.lng], {
-                        radius: 2000,
+                        radius: 1850,
                         fillColor: color,
-                        color: 'rgba(255,255,255,0.3)',
-                        weight: 1.25,
-                        fillOpacity: 0.56,
+                        color: 'rgba(255,255,255,0.18)',
+                        weight: 1,
+                        fillOpacity: 0.65,
                         interactive: false
                     }).addTo(window.__landingPreviewLayer);
-                    L.marker([d.lat, d.lng], {
-                        interactive: false,
-                        icon: L.divIcon({
-                            className: '',
-                            html: '<div style="text-align:center;pointer-events:none;">' +
-                                '<div style="font-size:9px;font-weight:800;color:#fff;text-transform:uppercase;letter-spacing:0.05em;text-shadow:0 0 6px rgba(0,0,0,0.95),0 0 12px rgba(0,0,0,0.8);white-space:nowrap;">' +
-                                townLabel + '</div>' +
-                                '<div style="font-size:10px;font-weight:700;color:#e2e8f0;text-shadow:0 0 6px rgba(0,0,0,0.95),0 0 12px rgba(0,0,0,0.8);white-space:nowrap;">' +
-                                priceLabel + '</div></div>',
-                            iconSize: [140, 28],
-                            iconAnchor: [70, 14]
-                        })
-                    }).addTo(window.__landingPreviewLayer);
                 });
+            }
+
+            function ensureLandingHeatmapData() {
+                if (window.__landingHeatmapDataPromise) return window.__landingHeatmapDataPromise;
+                window.__landingChoroplethRequested = true;
+                window.__landingHeatmapDataPromise = fetch('/api/public/predicted_heatmap_preview')
+                    .then(function (r) {
+                        if (!r.ok) throw new Error('Failed to load heatmap preview');
+                        return r.json();
+                    })
+                    .then(function (data) {
+                        window.__landingHeatmapData = data;
+                        window.__landingDataReady = true;
+                        return data;
+                    })
+                    .catch(function (err) {
+                        window.__landingHeatmapDataPromise = null;
+                        window.__landingChoroplethRequested = false;
+                        throw err;
+                    });
+                return window.__landingHeatmapDataPromise;
             }
 
             if (!window.__landingMap) {
@@ -3176,17 +3208,16 @@
                 setTimeout(function () { map.invalidateSize(); }, 320);
             });
 
-            if (!window.__landingChoroplethRequested) {
-                window.__landingChoroplethRequested = true;
-                fetch('/api/predicted_heatmap')
-                    .then(function (r) { return r.json(); })
+            if (window.__landingDataReady && Array.isArray(window.__landingHeatmapData)) {
+                loadLandingChoropleth(map, window.__landingHeatmapData);
+                if (window.__landingMapReady) setLandingMapLoading(false);
+            } else {
+                ensureLandingHeatmapData()
                     .then(function (data) {
                         loadLandingChoropleth(map, data);
-                        window.__landingDataReady = true;
                         if (window.__landingMapReady) setLandingMapLoading(false);
                     })
                     .catch(function () {
-                        window.__landingChoroplethRequested = false;
                         setLandingMapLoading(true, 'Map preview is taking longer than usual...');
                     });
             }
@@ -3248,6 +3279,35 @@
             });
         }
         initTabs();
+
+        function preloadLandingHeatmapData() {
+            if (window.__landingDataReady || window.__landingHeatmapDataPromise) return;
+            window.__landingHeatmapDataPromise = fetch('/api/public/predicted_heatmap_preview')
+                .then(function (r) {
+                    if (!r.ok) throw new Error('Failed to preload heatmap preview');
+                    return r.json();
+                })
+                .then(function (data) {
+                    window.__landingHeatmapData = data;
+                    window.__landingDataReady = true;
+                    return data;
+                })
+                .catch(function () {
+                    window.__landingHeatmapDataPromise = null;
+                });
+        }
+
+        if (typeof window.requestIdleCallback === 'function') {
+            window.requestIdleCallback(preloadLandingHeatmapData, { timeout: 1200 });
+        } else {
+            setTimeout(preloadLandingHeatmapData, 350);
+        }
+
+        const heatmapTabButton = document.getElementById('heatmapTabButton');
+        if (heatmapTabButton) {
+            heatmapTabButton.addEventListener('pointerenter', preloadLandingHeatmapData, { once: true });
+            heatmapTabButton.addEventListener('focus', preloadLandingHeatmapData, { once: true });
+        }
 
         const revealElements = document.querySelectorAll('.reveal');
         const revealOptions = { threshold: 0.15, rootMargin: "0px 0px -50px 0px" };
