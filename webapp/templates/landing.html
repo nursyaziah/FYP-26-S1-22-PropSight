@@ -2736,50 +2736,125 @@
                             style="letter-spacing: 1px;">View All <i class="bi bi-arrow-right"></i></a>
                     </div>
 
-                    <a href="#" class="article-card">
+                    <button class="article-card w-100 text-start border-0 bg-transparent p-0" type="button"
+                        data-bs-toggle="collapse" data-bs-target="#insightArticle1" aria-expanded="false"
+                        aria-controls="insightArticle1">
                         <img src="https://placehold.co/200x200/e2e8f0/64748b?text=Tech" alt="Article 1"
                             class="article-img">
                         <div>
                             <span class="text-primary small fw-bold text-uppercase"
                                 style="letter-spacing: 1px;">Technical Report</span>
                             <h5 class="fw-bold mt-2 mb-2" style="font-size: 1.15rem;">
-                                How our ML architecture achieves a
-                                {% if landing_stats.mape is not none %}
-                                {{ "%.2f"|format(landing_stats.mape|float) }}% MAPE
-                                {% else %}
-                                low MAPE
-                                {% endif %}
+                                How PropSight Turns Open Data Into Explainable HDB Valuations
                             </h5>
-                            <p class="text-gray small mb-0">A deep dive into the predictive analytics engine behind
-                                PropSight.</p>
+                            <p class="text-gray small mb-0">A short look at the prediction pipeline behind PropSight.
+                            </p>
                         </div>
-                    </a>
+                    </button>
+                    <div class="collapse mt-3" id="insightArticle1">
+                        <div class="glass-card p-4">
+                            <h5 class="fw-bold mb-3">How PropSight Turns Open Data Into Explainable HDB Valuations</h5>
+                            <p class="text-gray small mb-3">PropSight is built to give HDB homeowners a clearer second
+                                opinion on their flat's value. Instead of relying only on broad market averages, the
+                                platform combines public transaction data, property attributes, geospatial features, and
+                                market context to produce a more structured valuation estimate.</p>
+                            <p class="text-gray small mb-3">The system uses HDB resale transaction records together
+                                with reference datasets such as MRT and LRT station locations, schools, hawker centres,
+                                shopping malls, OneMap geocoding, and MAS SORA macroeconomic data. These inputs are
+                                processed into engineered features that describe not only the flat itself, but also its
+                                surrounding location and market environment.</p>
+                            <p class="text-gray small mb-3">The prediction model then estimates the resale price using
+                                these features. To make the result easier to understand, PropSight does not stop at a
+                                single number. The platform also shows a confidence range, recent comparable
+                                transactions, town-level benchmarks, flat age, and remaining lease. For Premium users,
+                                SHAP-based explanations show which factors push the predicted price up or down, while
+                                plain-English AI summaries help translate the technical output into homeowner-friendly
+                                reasoning.</p>
+                            <p class="text-gray small mb-0">The goal is transparency. A homeowner should be able to
+                                see not only what the system predicts, but also why the estimate may be higher or lower
+                                than local benchmarks. This makes PropSight more than a prediction tool; it becomes a
+                                practical way to understand the evidence behind a property's market position.</p>
+                        </div>
+                    </div>
 
-                    <a href="#" class="article-card">
+                    <button class="article-card w-100 text-start border-0 bg-transparent p-0" type="button"
+                        data-bs-toggle="collapse" data-bs-target="#insightArticle2" aria-expanded="false"
+                        aria-controls="insightArticle2">
                         <img src="https://placehold.co/200x200/e2e8f0/64748b?text=Market" alt="Article 2"
                             class="article-img">
                         <div>
                             <span class="text-success small fw-bold text-uppercase" style="letter-spacing: 1px;">Market
                                 Analysis</span>
-                            <h5 class="fw-bold mt-2 mb-2" style="font-size: 1.15rem;">Why mature estates maintain
-                                premiums</h5>
-                            <p class="text-gray small mb-0">Analyzing 5-year historical trends across Bishan and Ang Mo
-                                Kio.</p>
+                            <h5 class="fw-bold mt-2 mb-2" style="font-size: 1.15rem;">Why Location and Amenities Still
+                                Shape HDB Resale Value</h5>
+                            <p class="text-gray small mb-0">Understanding how micro-location can affect a flat's market
+                                position.</p>
                         </div>
-                    </a>
+                    </button>
+                    <div class="collapse mt-3" id="insightArticle2">
+                        <div class="glass-card p-4">
+                            <h5 class="fw-bold mb-3">Why Location and Amenities Still Shape HDB Resale Value</h5>
+                            <p class="text-gray small mb-3">In the HDB resale market, two flats with similar size and
+                                lease may still show different values because their locations are not the same.
+                                Transport access, nearby schools, hawker centres, shopping malls, and distance to the
+                                CBD can all affect how convenient and attractive a flat is within its local area.</p>
+                            <p class="text-gray small mb-3">PropSight captures these differences through geospatial
+                                features. The platform considers distance to the nearest MRT or LRT station, distance to
+                                the CBD, distance to primary schools, distance to major malls, distance to hawker
+                                centres, and nearby amenity density. These features help explain why one flat may hold a
+                                stronger premium than another, even when their basic property details look similar.</p>
+                            <p class="text-gray small mb-3">This is especially useful for homeowners who want to
+                                understand whether their flat has location-based advantages. For example, strong
+                                transport access or nearby lifestyle amenities may support a higher local market
+                                position, while weaker accessibility may place the flat closer to the average or below
+                                nearby benchmarks.</p>
+                            <p class="text-gray small mb-0">By combining amenity context with recent comparable
+                                transactions and town-level analytics, PropSight helps users move beyond surface-level
+                                price checking. Homeowners can better understand how their flat fits into the surrounding
+                                market and which location factors may be contributing to its current value.</p>
+                        </div>
+                    </div>
 
-                    <a href="#" class="article-card">
+                    <button class="article-card w-100 text-start border-0 bg-transparent p-0" type="button"
+                        data-bs-toggle="collapse" data-bs-target="#insightArticle3" aria-expanded="false"
+                        aria-controls="insightArticle3">
                         <img src="https://placehold.co/200x200/e2e8f0/64748b?text=Guide" alt="Article 3"
                             class="article-img">
                         <div>
                             <span class="text-warning text-darken small fw-bold text-uppercase"
                                 style="letter-spacing: 1px;">User Guide</span>
-                            <h5 class="fw-bold mt-2 mb-2" style="font-size: 1.15rem;">Using the Geospatial Heatmap
-                                effectively</h5>
-                            <p class="text-gray small mb-0">Step-by-step guide to finding undervalued properties in
-                                Singapore.</p>
+                            <h5 class="fw-bold mt-2 mb-2" style="font-size: 1.15rem;">Understanding Your Flat's Premium
+                                Position and Growth Potential</h5>
+                            <p class="text-gray small mb-0">Use heatmaps, local benchmarks, and future context to see
+                                how your flat compares within its area.</p>
                         </div>
-                    </a>
+                    </button>
+                    <div class="collapse mt-3" id="insightArticle3">
+                        <div class="glass-card p-4">
+                            <h5 class="fw-bold mb-3">Understanding Your Flat's Premium Position and Growth Potential</h5>
+                            <p class="text-gray small mb-3">For many homeowners, the important question is not only
+                                "what is my flat worth?", but also "is my flat positioned at a premium compared with
+                                similar flats nearby?" PropSight helps answer this by combining the predicted price with
+                                town averages, recent comparable transactions, heatmap patterns, and analytics dashboard
+                                indicators.</p>
+                            <p class="text-gray small mb-3">A flat may show a stronger premium position when its
+                                estimated value is above the local benchmark for similar flat types. This premium may be
+                                linked to factors such as remaining lease, floor level, floor area, mature estate
+                                status, MRT accessibility, nearby amenities, and recent demand in the town or street. By
+                                presenting these signals together, PropSight helps homeowners understand the context
+                                behind the price rather than viewing the estimate in isolation.</p>
+                            <p class="text-gray small mb-3">The platform also supports future value exploration.
+                                Features such as the five-year projection, lease decay analysis, town price trends, and
+                                MRT What-If Estimator help users understand how their flat's indicative value may change
+                                under different conditions. These tools do not guarantee future appreciation, but they
+                                can highlight possible value uplift factors, such as planned transport improvements or
+                                stronger local demand.</p>
+                            <p class="text-gray small mb-0">The purpose is to support clearer homeowner understanding.
+                                Instead of depending only on one valuation figure, users can compare their flat against
+                                local evidence, review the drivers behind its premium, and form a more informed view of
+                                its current and potential market position.</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
