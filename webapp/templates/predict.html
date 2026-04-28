@@ -9,6 +9,7 @@ body {
   flex-direction: column;
   min-height: 100vh;
   min-height: 100dvh;
+  background-color: #f8fafc;
 }
 
 /* Prevent navbar/footer/header from shrinking */
@@ -25,6 +26,49 @@ body > nav, body > footer, body > header {
   max-width: 1440px;
   margin: 0 auto;
   flex-grow: 1;
+  position: relative;
+  z-index: 1;
+}
+
+/* ===== QUANTITATIVE DOT MATRIX BACKGROUND ===== */
+.dot-matrix-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: #f8fafc;
+}
+.dot-matrix-bg::before {
+  content: "";
+  position: absolute;
+  inset: -14%;
+  background:
+    radial-gradient(circle at 20% 22%, rgba(56, 189, 248, 0.28), transparent 44%),
+    radial-gradient(circle at 79% 74%, rgba(16, 185, 129, 0.26), transparent 46%),
+    radial-gradient(circle at 70% 24%, rgba(59, 130, 246, 0.24), transparent 42%);
+  filter: blur(80px) saturate(1.08);
+  opacity: 0.7;
+  transform-origin: center;
+  animation: auroraBreathe 12s ease-in-out infinite alternate, auroraDrift 24s ease-in-out infinite;
+}
+@keyframes auroraBreathe {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1) rotate(0deg);
+    opacity: 0.56;
+  }
+  50% {
+    transform: translate3d(-3.4%, 2.8%, 0) scale(1.14) rotate(10deg);
+    opacity: 0.84;
+  }
+  100% {
+    transform: translate3d(3.6%, -2.6%, 0) scale(1.2) rotate(-9deg);
+    opacity: 0.68;
+  }
+}
+@keyframes auroraDrift {
+  0%, 100% { background-position: 0% 0%, 0% 0%, 0% 0%; }
+  33% { background-position: 4% -3%, -2% 2%, 3% 1%; }
+  66% { background-position: -3% 2%, 3% -2%, -2% 3%; }
 }
 
 /* ===== SIDEBAR ===== */
@@ -43,6 +87,10 @@ body > nav, body > footer, body > header {
   border-radius: 16px;
   box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
   overflow: hidden;
+}
+.get-estimate-card {
+  background: #ffffff;
+  box-shadow: 0 25px 50px -12px rgba(15,23,42,0.08);
 }
 
 .sidebar-header {
@@ -977,13 +1025,15 @@ body > nav, body > footer, body > header {
   {% endif %}
 {% endif %}
 
+<div class="dot-matrix-bg" aria-hidden="true"></div>
+
 <div class="predict-shell">
 
   {# ======================================================= #}
   {# LEFT SIDEBAR — Input form                               #}
   {# ======================================================= #}
   <aside class="predict-sidebar">
-    <div class="sidebar-card">
+    <div class="sidebar-card get-estimate-card">
 
       <div class="sidebar-header">
         <span class="p-kicker">Property Valuation</span>
