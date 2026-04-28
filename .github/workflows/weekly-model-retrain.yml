@@ -35,7 +35,9 @@ jobs:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       TRAINING_DATA_SOURCE: supabase
-      OPTUNA_TRIALS: ${{ github.event.inputs.optuna_trials || '25' }}
+      XGB_TRIALS: ${{ github.event.inputs.optuna_trials || '25' }}
+      LGBM_TRIALS: ${{ github.event.inputs.optuna_trials || '25' }}
+      CATBOOST_TRIALS: ${{ github.event.inputs.optuna_trials || '25' }}
       FRESH_TUNING: ${{ github.event.inputs.fresh_tuning || '0' }}
       N_ESTIMATORS: '3000'
       HDB_STRICT_EXTERNAL_STEPS: '1'
