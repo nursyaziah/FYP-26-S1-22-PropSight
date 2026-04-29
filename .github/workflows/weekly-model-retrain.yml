@@ -65,6 +65,9 @@ jobs:
           key: model-assets-${{ hashFiles('ML/model_assets/latest.txt') }}
           restore-keys: model-assets-
 
+      - name: Reset tracked model files after cache restore
+        run: git restore --worktree --staged ML/model_assets
+
       - name: Run ML pipeline
         id: run_ml
         working-directory: scripts
@@ -125,7 +128,8 @@ jobs:
           Winner: ${WINNER_NAME}_model.pkl
           Results: $WINNER
           Triggered by: ${{ github.event_name }}"
-          git pull --rebase origin main
+          git status --short
+          git pull --rebase --autostash origin main
           git push
 
       - name: Sync model version to Supabase
