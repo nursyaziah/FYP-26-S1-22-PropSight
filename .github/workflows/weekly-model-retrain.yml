@@ -71,7 +71,7 @@ jobs:
       - name: Run ML pipeline
         id: run_ml
         working-directory: scripts
-        run: python run_ml_pipeline.py
+        run: python -u run_ml_pipeline.py
 
       - name: Guard model promotion quality
         if: steps.run_ml.outcome == 'success'
@@ -79,7 +79,7 @@ jobs:
         run: python -c "from pipeline_orchestration import run_supabase_model_version_sync; run_supabase_model_version_sync('weekly-model-retrain-preflight', dry_run=True)"
 
       - name: Save model assets cache
-        if: always()
+        if: steps.run_ml.outcome == 'success' && success()
         uses: actions/cache/save@v4
         with:
           path: ML/model_assets
@@ -135,7 +135,7 @@ jobs:
       - name: Sync model version to Supabase
         if: steps.run_ml.outcome == 'success'
         working-directory: scripts
-        run: python sync_to_supabase.py
+        run: python -c "from pipeline_orchestration import run_supabase_model_version_sync; run_supabase_model_version_sync('weekly-model-retrain')"
 
       - name: Trigger Render deploy
         if: steps.run_ml.outcome == 'success' && env.RENDER_DEPLOY_HOOK != ''

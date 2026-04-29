@@ -9,6 +9,9 @@ jobs:
   refresh-data:
     runs-on: ubuntu-latest
     timeout-minutes: 180
+    permissions:
+      contents: read
+      issues: write
 
     env:
       SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
@@ -34,8 +37,38 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: Data Preprocessing/hdb_resale.db
-          key: sqlite-db-${{ hashFiles('Data Preprocessing/hdb_resale.db') }}
+          key: sqlite-db-${{ github.run_id }}
           restore-keys: sqlite-db-
+
+      - name: Validate restored SQLite cache
+        id: sqlite-cache
+        run: |
+          python - <<'PY'
+          import os
+          import sqlite3
+
+          path = "Data Preprocessing/hdb_resale.db"
+          valid = False
+
+          if os.path.exists(path) and os.path.getsize(path) > 0:
+              try:
+                  conn = sqlite3.connect(path)
+                  row = conn.execute(
+                      "SELECT 1 FROM sqlite_master WHERE type='table' AND name='resale_prices'"
+                  ).fetchone()
+                  valid = row is not None
+                  conn.close()
+              except sqlite3.Error as exc:
+                  print(f"SQLite cache validation failed: {exc}")
+
+          if not valid and os.path.exists(path):
+              os.remove(path)
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+              fh.write(f"valid={'true' if valid else 'false'}\n")
+
+          print("SQLite cache is valid." if valid else "No valid SQLite cache found.")
+          PY
 
       - name: Restore raw CSV cache
         id: raw-cache-restore
@@ -51,7 +84,7 @@ jobs:
           cp -n "Data Preprocessing/raw hdb data/"*.csv "Data Preprocessing/raw/"
 
       - name: Download seed DB on cache miss
-        if: steps.cache-restore.outputs.cache-hit != 'true'
+        if: steps.sqlite-cache.outputs.valid != 'true'
         run: |
           gh release download data-seed -p hdb_resale.db -D "Data Preprocessing/" --clobber
         env:
@@ -59,17 +92,17 @@ jobs:
 
       - name: Run data preprocessing pipeline
         working-directory: scripts
-        run: python run_data_preprocessing.py
+        run: python -u run_data_preprocessing.py
 
       - name: Save SQLite cache
-        if: always()
+        if: success()
         uses: actions/cache/save@v4
         with:
           path: Data Preprocessing/hdb_resale.db
           key: sqlite-db-${{ github.run_id }}
 
       - name: Save raw CSV cache
-        if: always()
+        if: success()
         uses: actions/cache/save@v4
         with:
           path: Data Preprocessing/raw
