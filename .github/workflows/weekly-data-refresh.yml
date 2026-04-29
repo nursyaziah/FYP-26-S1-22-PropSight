@@ -37,6 +37,19 @@ jobs:
           key: sqlite-db-${{ hashFiles('Data Preprocessing/hdb_resale.db') }}
           restore-keys: sqlite-db-
 
+      - name: Restore raw CSV cache
+        id: raw-cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: Data Preprocessing/raw
+          key: hdb-raw-${{ github.run_id }}
+          restore-keys: hdb-raw-
+
+      - name: Seed raw CSV cache
+        run: |
+          mkdir -p "Data Preprocessing/raw"
+          cp -n "Data Preprocessing/raw hdb data/"*.csv "Data Preprocessing/raw/"
+
       - name: Download seed DB on cache miss
         if: steps.cache-restore.outputs.cache-hit != 'true'
         run: |
@@ -54,6 +67,13 @@ jobs:
         with:
           path: Data Preprocessing/hdb_resale.db
           key: sqlite-db-${{ github.run_id }}
+
+      - name: Save raw CSV cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: Data Preprocessing/raw
+          key: hdb-raw-${{ github.run_id }}
 
       - name: Create issue on failure
         if: failure()
