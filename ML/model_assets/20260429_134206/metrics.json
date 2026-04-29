@@ -1,0 +1,365 @@
+{
+  "model_results": {
+    "xgboost": {
+      "val": {
+        "rmse": 35266.8339,
+        "mae": 24634.1498,
+        "r2": 0.9719,
+        "mape": 3.7443,
+        "flat_type_breakdown": {
+          "2 Room": {
+            "mae": 13031.78,
+            "count": 190
+          },
+          "3 Room": {
+            "mae": 19123.49,
+            "count": 1463
+          },
+          "4 Room": {
+            "mae": 23835.49,
+            "count": 2641
+          },
+          "5 Room": {
+            "mae": 30096.58,
+            "count": 1376
+          },
+          "Executive": {
+            "mae": 38454.47,
+            "count": 352
+          },
+          "1 Room": {
+            "mae": 6773.53,
+            "count": 1
+          },
+          "Multi-Generation": {
+            "mae": 37250.75,
+            "count": 1
+          }
+        }
+      },
+      "test": {
+        "rmse": 38954.9823,
+        "mae": 27035.5472,
+        "r2": 0.9664,
+        "mape": 4.0976,
+        "flat_type_breakdown": {
+          "2 Room": {
+            "mae": 16822.69,
+            "count": 166
+          },
+          "3 Room": {
+            "mae": 21658.16,
+            "count": 1319
+          },
+          "4 Room": {
+            "mae": 25871.07,
+            "count": 2373
+          },
+          "5 Room": {
+            "mae": 33118.67,
+            "count": 1270
+          },
+          "Executive": {
+            "mae": 39165.53,
+            "count": 318
+          },
+          "1 Room": {
+            "mae": 19162.27,
+            "count": 4
+          }
+        }
+      }
+    },
+    "lgbm": {
+      "val": {
+        "rmse": 35207.6246,
+        "mae": 24693.2228,
+        "r2": 0.972,
+        "mape": 3.7581,
+        "flat_type_breakdown": {
+          "2 Room": {
+            "mae": 13096.31,
+            "count": 190
+          },
+          "3 Room": {
+            "mae": 19236.9,
+            "count": 1463
+          },
+          "4 Room": {
+            "mae": 24172.74,
+            "count": 2641
+          },
+          "5 Room": {
+            "mae": 29236.64,
+            "count": 1376
+          },
+          "Executive": {
+            "mae": 39662.15,
+            "count": 352
+          },
+          "1 Room": {
+            "mae": 6868.01,
+            "count": 1
+          },
+          "Multi-Generation": {
+            "mae": 82332.76,
+            "count": 1
+          }
+        }
+      },
+      "test": {
+        "rmse": 38763.453,
+        "mae": 26873.8128,
+        "r2": 0.9668,
+        "mape": 4.0653,
+        "flat_type_breakdown": {
+          "2 Room": {
+            "mae": 16632.6,
+            "count": 166
+          },
+          "3 Room": {
+            "mae": 21221.4,
+            "count": 1319
+          },
+          "4 Room": {
+            "mae": 26037.77,
+            "count": 2373
+          },
+          "5 Room": {
+            "mae": 32848.65,
+            "count": 1270
+          },
+          "Executive": {
+            "mae": 38244.98,
+            "count": 318
+          },
+          "1 Room": {
+            "mae": 10732.47,
+            "count": 4
+          }
+        }
+      }
+    },
+    "catboost": {
+      "val": {
+        "rmse": 34005.3444,
+        "mae": 23782.6958,
+        "r2": 0.9739,
+        "mape": 3.6294,
+        "flat_type_breakdown": {
+          "2 Room": {
+            "mae": 13117.26,
+            "count": 190
+          },
+          "3 Room": {
+            "mae": 18318.87,
+            "count": 1463
+          },
+          "4 Room": {
+            "mae": 23007.87,
+            "count": 2641
+          },
+          "5 Room": {
+            "mae": 28659.98,
+            "count": 1376
+          },
+          "Executive": {
+            "mae": 39000.1,
+            "count": 352
+          },
+          "1 Room": {
+            "mae": 5257.55,
+            "count": 1
+          },
+          "Multi-Generation": {
+            "mae": 40953.42,
+            "count": 1
+          }
+        }
+      },
+      "test": {
+        "rmse": 36130.8614,
+        "mae": 25233.6779,
+        "r2": 0.9711,
+        "mape": 3.8487,
+        "flat_type_breakdown": {
+          "2 Room": {
+            "mae": 15541.53,
+            "count": 166
+          },
+          "3 Room": {
+            "mae": 20144.1,
+            "count": 1319
+          },
+          "4 Room": {
+            "mae": 24481.26,
+            "count": 2373
+          },
+          "5 Room": {
+            "mae": 30417.15,
+            "count": 1270
+          },
+          "Executive": {
+            "mae": 36470.92,
+            "count": 318
+          },
+          "1 Room": {
+            "mae": 13004.44,
+            "count": 4
+          }
+        }
+      }
+    },
+    "ensemble": {
+      "val": {
+        "rmse": 33659.387,
+        "mae": 23561.4621,
+        "r2": 0.9744,
+        "mape": 3.5945,
+        "flat_type_breakdown": {
+          "2 Room": {
+            "mae": 12777.54,
+            "count": 190
+          },
+          "3 Room": {
+            "mae": 18260.96,
+            "count": 1463
+          },
+          "4 Room": {
+            "mae": 22790.99,
+            "count": 2641
+          },
+          "5 Room": {
+            "mae": 28282.54,
+            "count": 1376
+          },
+          "Executive": {
+            "mae": 38703.34,
+            "count": 352
+          },
+          "1 Room": {
+            "mae": 5757.82,
+            "count": 1
+          },
+          "Multi-Generation": {
+            "mae": 53623.72,
+            "count": 1
+          }
+        }
+      },
+      "test": {
+        "rmse": 36214.9377,
+        "mae": 25195.1982,
+        "r2": 0.971,
+        "mape": 3.8369,
+        "flat_type_breakdown": {
+          "2 Room": {
+            "mae": 15383.41,
+            "count": 166
+          },
+          "3 Room": {
+            "mae": 20098.12,
+            "count": 1319
+          },
+          "4 Room": {
+            "mae": 24381.32,
+            "count": 2373
+          },
+          "5 Room": {
+            "mae": 30528.83,
+            "count": 1270
+          },
+          "Executive": {
+            "mae": 36393.36,
+            "count": 318
+          },
+          "1 Room": {
+            "mae": 12295.85,
+            "count": 4
+          }
+        }
+      }
+    }
+  },
+  "winner": {
+    "winner": "catboost",
+    "selection_metric": "val_mape",
+    "val_mape": 3.6294,
+    "val_rmse": 34005.34,
+    "test_rmse": 34411.35,
+    "test_r2": 0.973804,
+    "test_mape": 3.6424,
+    "runner_up": "xgboost",
+    "runner_up_val_mape": 3.7443,
+    "justification": "catboost achieved the lowest validation MAPE of 3.63%. Runner-up on validation: xgboost at 3.74% MAPE. Pre-refit winner test snapshot: RMSE=36,131  R2=0.9711  MAPE=3.85%. Final deployed test after train+val refit: RMSE=34,411  R2=0.9738  MAPE=3.64%. Refit test MAPE delta: -0.21pp. The ensemble is excluded from winner selection (meta-learner leakage + Render memory constraint).",
+    "pre_refit_test_mape": 3.8487,
+    "pre_refit_test_rmse": 36130.86,
+    "pre_refit_test_r2": 0.97112,
+    "refit_test_mape": 3.6424,
+    "refit_test_rmse": 34411.35,
+    "refit_test_r2": 0.973804
+  },
+  "training_config": {
+    "xgb_trials": 25,
+    "lgbm_trials": 25,
+    "catboost_trials": 25,
+    "xgb_n_estimators": 2000,
+    "lgbm_n_estimators": 2000,
+    "catboost_n_estimators": 2000,
+    "early_stopping_rounds": 50,
+    "tuning_sample_size": 250000,
+    "rf_estimators": 300,
+    "model_n_jobs": -1,
+    "fresh_tuning": false
+  },
+  "training_config_notes": [],
+  "xgb_best_params": {
+    "learning_rate": 0.048667,
+    "max_depth": 8,
+    "min_child_weight": 9,
+    "subsample": 0.932901,
+    "colsample_bytree": 0.64053,
+    "reg_alpha": 0.0,
+    "reg_lambda": 4.051903,
+    "gamma": 0.000255,
+    "n_estimators": 2000,
+    "objective": "reg:squarederror",
+    "eval_metric": "rmse",
+    "verbosity": 0,
+    "n_jobs": -1,
+    "random_state": 42,
+    "tree_method": "hist",
+    "early_stopping_rounds": 50
+  },
+  "lgbm_best_params": {
+    "learning_rate": 0.05889,
+    "num_leaves": 141,
+    "max_depth": 10,
+    "min_child_samples": 81,
+    "subsample": 0.864653,
+    "colsample_bytree": 0.619968,
+    "reg_alpha": 0.0,
+    "reg_lambda": 0.0,
+    "n_estimators": 2000,
+    "subsample_freq": 1,
+    "force_col_wise": true,
+    "n_jobs": -1,
+    "random_state": 42,
+    "verbose": -1
+  },
+  "catboost_best_params": {
+    "learning_rate": 0.108376,
+    "depth": 8,
+    "l2_leaf_reg": 2.279316,
+    "bagging_temperature": 0.69862,
+    "iterations": 2000,
+    "early_stopping_rounds": 50,
+    "allow_writing_files": false,
+    "random_seed": 42,
+    "verbose": 0
+  },
+  "ensemble_weights": {
+    "catboost": 0.69,
+    "lgbm": 0.31
+  }
+}
