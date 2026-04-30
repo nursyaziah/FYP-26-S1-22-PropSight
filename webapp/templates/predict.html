@@ -2187,6 +2187,19 @@ if (pForm && subBtn) {
       }
     }
 
+    // Market shock pill (if local upswing/cooling detected)
+    var shock = ctx.market_shock;
+    if (shock && shock.severity && shock.severity !== 'stable') {
+      var verb = shock.direction === 'up' ? 'upswing' : (shock.direction === 'down' ? 'cooling' : 'shift');
+      var estimateText = predicted ? ('$' + Math.round(predicted / 1000) + 'K estimate') : 'estimate';
+      pills.unshift({
+        label: 'What does this local ' + verb + ' mean for me?',
+        q: 'The card shows a ' + (shock.title || 'recent local market signal') +
+           ' for my area. What does that specific number mean for my ' +
+           estimateText + ', and how should I read it?'
+      });
+    }
+
     // Lease-based pill
     if (remainingLease && remainingLease < 70) {
       pills.push({
@@ -2360,10 +2373,13 @@ if (pForm && subBtn) {
 
   function removeEl(el) { if (el && el.parentNode) el.parentNode.removeChild(el); }
 
+  var followUpFactorQ = (ctx.shap_features || []).length
+    ? 'Which factor has the biggest impact on my estimate?'
+    : 'What should I review first in this estimate?';
   var FU_POOLS = [
     ['What about future resale value?', 'How does this compare to nearby towns?'],
-    ['Which factor has the biggest impact?', 'What should I review next?'],
-    ['How reliable is this estimate?', 'What makes this area desirable?'],
+    [followUpFactorQ, 'What should I review next?'],
+    ['How reliable is this estimate?', 'Which local number matters most?'],
     ['How does floor level affect price?', 'What does "remaining lease" mean for buyers?'],
     ['How does my flat compare to the town average?', 'What drives HDB prices in Singapore?']
   ];

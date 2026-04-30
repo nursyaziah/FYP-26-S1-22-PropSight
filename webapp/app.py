@@ -1596,7 +1596,7 @@ def _gemini_request(url, body_dict, timeout=25):
     return text
 
 
-def _call_gemini(prompt, max_tokens=1024, images=None, json_mode=False):
+def _call_gemini(prompt, max_tokens=1024, images=None, json_mode=False, temperature=0.3):
     """call Google Gemini API and return text response, or None on error.
     Falls back to Gemini 2.5 Flash if the primary model fails (e.g. rate limit)."""
     if not GEMINI_API_KEY:
@@ -1605,7 +1605,7 @@ def _call_gemini(prompt, max_tokens=1024, images=None, json_mode=False):
     if images:
         for img_b64 in images:
             parts.append({"inline_data": {"mime_type": "image/png", "data": img_b64}})
-    generation_config = {"maxOutputTokens": max_tokens, "temperature": 0.3}
+    generation_config = {"maxOutputTokens": max_tokens, "temperature": temperature}
     if json_mode:
         generation_config["response_mime_type"] = "application/json"
     payload = {
@@ -1621,14 +1621,14 @@ def _call_gemini(prompt, max_tokens=1024, images=None, json_mode=False):
     return None
 
 
-def _call_gemini_chat(contents, max_tokens=1024):
+def _call_gemini_chat(contents, max_tokens=1024, temperature=0.3):
     """Call Gemini with multi-turn conversation history and return text response.
     Falls back to Gemini 2.5 Flash if the primary model fails (e.g. rate limit)."""
     if not GEMINI_API_KEY:
         return None
     payload = {
         "contents": contents,
-        "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.3},
+        "generationConfig": {"maxOutputTokens": max_tokens, "temperature": temperature},
     }
     for endpoint in (GEMINI_ENDPOINT, GEMINI_FALLBACK_ENDPOINT):
         try:
@@ -3731,8 +3731,10 @@ def _generate_shap_ai_summary(features, predicted_price, town, flat_type,
     for item in features[:10]:
         impact = int(round(_coerce_float(item.get("dollar_impact"), 0) or 0))
         direction = "pushes price up" if impact >= 0 else "pushes price down"
+        description = str(item.get("description") or "").strip()
+        description_text = f" ({description})" if description else ""
         feature_lines.append(
-            f"- {item.get('label', item.get('key', 'Feature'))}: {direction} by about ${abs(impact):,}"
+            f"- {item.get('label', item.get('key', 'Feature'))}: {direction} by about ${abs(impact):,}{description_text}"
         )
 
     context_bits = [
@@ -3765,7 +3767,8 @@ def _generate_shap_ai_summary(features, predicted_price, town, flat_type,
 
 def compute_shap_explanation(town, flat_type, flat_model, floor_area, storey_range,
                              lease_commence, predicted_price=None, override_year=None,
-                             override_distances=None, town_avg_price=None):
+                             override_distances=None, town_avg_price=None,
+                             generate_narrative=True):
     if ARTEFACTS.get("model_key") not in SHAP_SUPPORTED_MODEL_KEYS:
         return None
 
@@ -3850,20 +3853,23 @@ def compute_shap_explanation(town, flat_type, flat_model, floor_area, storey_ran
     rounded_items.sort(key=lambda item: abs(item["dollar_impact"]), reverse=True)
     display_predicted_price = predicted_price_raw if predicted_price is None else float(predicted_price)
     market_shock = raw_values.get("market_shock")
-    narrative = _generate_shap_ai_summary(
-        rounded_items,
-        display_predicted_price,
-        town,
-        flat_type,
-        town_avg_price=town_avg_price,
-        baseline_price=baseline_price,
-    ) or _generate_narrative_template(
-        rounded_items,
-        predicted_price_raw,
-        town,
-        town_avg_price=town_avg_price,
-        baseline_price=baseline_price,
-    )
+    if generate_narrative:
+        narrative = _generate_shap_ai_summary(
+            rounded_items,
+            display_predicted_price,
+            town,
+            flat_type,
+            town_avg_price=town_avg_price,
+            baseline_price=baseline_price,
+        ) or _generate_narrative_template(
+            rounded_items,
+            predicted_price_raw,
+            town,
+            town_avg_price=town_avg_price,
+            baseline_price=baseline_price,
+        )
+    else:
+        narrative = ""
 
     return {
         "features": rounded_items,
@@ -6430,6 +6436,137 @@ def _serialize_ai_chart_data(chart_data, limit):
     return json.dumps(chart_data, default=str)[:limit]
 
 
+def _is_prediction_factor_question(question):
+    text = str(question or "").strip().lower()
+    if not text:
+        return False
+    patterns = [
+        r"\bwhich\s+factor\b",
+        r"\b(biggest|main|strongest|top|most\s+important)\b.*\b(factor|driver|impact|influence|affect)",
+        r"\bwhat\s+(affects|drives|influences)\b.*\b(price|estimate|value)",
+    ]
+    return any(re.search(pattern, text) for pattern in patterns)
+
+
+def _compute_top_prediction_factor(chart_data, my_flat):
+    if not isinstance(chart_data, dict):
+        chart_data = {}
+    if not isinstance(my_flat, dict):
+        my_flat = {}
+
+    shap_features = chart_data.get("shap_features")
+    if isinstance(shap_features, list) and shap_features:
+        return next((item for item in shap_features if isinstance(item, dict)), None)
+
+    required = ("town", "flat_type", "flat_model", "floor_area", "storey_range", "lease_commence")
+    if any(my_flat.get(key) in (None, "") for key in required):
+        return None
+
+    block_distances = None
+    if my_flat.get("street_name"):
+        try:
+            block_distances = _get_block_distances(
+                my_flat.get("town"),
+                my_flat.get("street_name"),
+                my_flat.get("block") or "",
+            )
+        except Exception:
+            block_distances = None
+
+    try:
+        explanation = compute_shap_explanation(
+            town=my_flat.get("town"),
+            flat_type=my_flat.get("flat_type"),
+            flat_model=my_flat.get("flat_model"),
+            floor_area=my_flat.get("floor_area"),
+            storey_range=my_flat.get("storey_range"),
+            lease_commence=my_flat.get("lease_commence"),
+            predicted_price=my_flat.get("predicted_price") or chart_data.get("predicted_price"),
+            override_distances=block_distances,
+            town_avg_price=chart_data.get("town_avg_price"),
+            generate_narrative=False,
+        )
+    except Exception:
+        app.logger.warning("On-demand top SHAP factor failed", exc_info=True)
+        return None
+
+    features = (explanation or {}).get("features")
+    if isinstance(features, list) and features:
+        return next((item for item in features if isinstance(item, dict)), None)
+    return None
+
+
+def _build_prediction_factor_answer(chart_data, my_flat):
+    if not isinstance(chart_data, dict):
+        chart_data = {}
+    if not isinstance(my_flat, dict):
+        my_flat = {}
+
+    predicted = _coerce_float(my_flat.get("predicted_price") or chart_data.get("predicted_price"))
+    estimate_text = f"${predicted:,.0f}" if predicted is not None else "this estimate"
+
+    top_feature = _compute_top_prediction_factor(chart_data, my_flat)
+    if top_feature:
+        label = str(top_feature.get("label") or top_feature.get("key") or "the top model factor").strip()
+        impact = _coerce_float(top_feature.get("dollar_impact"))
+        market_shock = chart_data.get("market_shock")
+        has_market_shock = (
+            isinstance(market_shock, dict)
+            and str(market_shock.get("severity") or "").strip().lower()
+            not in {"", "stable"}
+        )
+        context_sentence = (
+            "That is the feature-level explanation, separate from the recent local market signal."
+            if has_market_shock
+            else "That comes from the model's feature-level breakdown."
+        )
+        description = str(top_feature.get("description") or "").strip()
+        description_sentence = f" In plain terms: {description}" if description else ""
+        if impact is not None:
+            direction = "adds" if impact >= 0 else "reduces the estimate by"
+            return (
+                f"For your {estimate_text} estimate, the biggest model factor is {label}, "
+                f"which {direction} about ${abs(impact):,.0f}. "
+                f"{context_sentence}{description_sentence}"
+            )
+        return (
+            f"For your {estimate_text} estimate, the biggest model factor is {label}. "
+            f"The exact dollar impact is not available in the supplied context. {context_sentence}{description_sentence}"
+        )
+
+    review_bits = []
+    market_shock = chart_data.get("market_shock")
+    if isinstance(market_shock, dict):
+        summary = str(market_shock.get("summary") or "").strip()
+        match = re.search(r"\d+(?:\.\d+)?%", summary)
+        if match:
+            review_bits.append(f"the {match.group(0)} local market signal")
+    town_avg = _coerce_float(chart_data.get("town_avg_price"))
+    if town_avg is not None:
+        review_bits.append(f"the town average of ${town_avg:,.0f}")
+    remaining_lease = _coerce_float(chart_data.get("remaining_lease"))
+    if remaining_lease is not None:
+        review_bits.append(f"the remaining lease of {remaining_lease:,.0f} years")
+
+    if review_bits:
+        review_text = ", ".join(review_bits[:-1])
+        if len(review_bits) > 1:
+            review_text += f", and {review_bits[-1]}"
+        else:
+            review_text = review_bits[0]
+        return (
+            f"For your {estimate_text} estimate, I cannot name the single biggest model factor because "
+            f"the SHAP factor breakdown is not included in this general-user context. "
+            f"Review {review_text}; Premium SHAP shows the exact factor-by-factor dollar impact."
+        )
+
+    return (
+        f"For your {estimate_text}, I cannot name the single biggest model factor because the SHAP "
+        "factor breakdown is not included in this general-user context. Premium SHAP shows the exact "
+        "factor-by-factor dollar impact."
+    )
+
+
 _AI_QUESTIONS_PROMPT = """You are a Singapore HDB (public housing) market analyst.
 The user is viewing analytics for: {filter_desc}
 
@@ -6512,7 +6649,10 @@ Where relevant, point users to PropSight features for deeper exploration: the Le
 If the user asks to compare areas inside a town (for example "Tampines East vs Tampines West"), explain that the current dashboard compares streets as the available within-town area unit.
 
 Avoid jargon and technical terms. Write as if explaining to someone who doesn't follow the property market.
-Only mention causes that are supported by the supplied data. If you mention broader market causes, frame them as possible context rather than fact.
+Only mention causes supported by the supplied data. NEVER use these vague filler phrases, regardless of context: "strong demand", "positive attributes", "favourable factors", "various factors", "market dynamics", "desirable location", "good location", "increasing values", "values have been increasing", "likely higher than before". If you would otherwise reach for these, name the specific feature from chart_data, my_flat, or shap_features that drives your point (for example, "remaining lease of 62 years", "9th floor", "476m to nearest MRT", "town_avg_price of $1.42M"). If no specific data supports the point, do not make the point.
+Your first sentence MUST contain at least one specific number, dollar figure, percentage, or named feature from the supplied context (for example, "$1.54M", "4.4%", "62 years", "Clementi Ave 3", "Improved model"). If you cannot ground the first sentence in a specific supplied value, say you do not have enough specific data to answer.
+If the user asks about the biggest factor, main driver, strongest impact, or what affects the price most, use chart_data.shap_features[0]. State its label and exact dollar_impact. Do not answer with market_shock unless the top SHAP feature itself is a market-shock feature. If shap_features is missing or empty, say the specific factor breakdown is not available and point them to the SHAP breakdown if available.
+When explaining any SHAP feature, use that feature's `description` field if supplied so the wording matches the SHAP card explanation.
 - If chart_data includes a `market_shock` object and its severity is
   not "stable", and the user asks anything about the local market
   direction, upswing, cooling, recent movement, or why the area is
@@ -6522,9 +6662,7 @@ Only mention causes that are supported by the supplied data. If you mention broa
   rolling benchmark for the area, (3) tie it to the user's predicted
   price by name (e.g. "your $1.54M estimate"), and (4) note this is
   a recent local move, not a long-term trend. Do not paraphrase the
-  percentage away. Do not invent additional causes such as "strong
-  demand" or "positive attributes" unless those words appear in the
-  supplied data.
+  percentage away. Do not invent additional causes.
 When discussing reliability or model error, do not overstate accuracy. Frame it as a data-driven estimate or second opinion, not a guaranteed valuation.
 Do not give buy/sell/hold/renovate/rent advice — PropSight is decision-support only. Criteria-based comparison questions like "best value", "best location", or "which factor should I prioritise" are allowed, but answer them as data tradeoffs rather than instructions. If the question asks for a transaction recommendation, answer the FACTUAL part if there is one (e.g. "is demand rising here" has a factual answer), then steer the user toward relevant data PropSight already shows: lease decay, comparable transactions, demand trend, position vs town average. Never tell them what to do with their flat.
 
@@ -6687,8 +6825,21 @@ def api_ai_answer():
     filter_desc = _build_ai_filter_desc(context, surface)
     surface_desc = _build_ai_surface_desc(surface)
     context_limit = 3200 if surface == "comparison" else 1500
-    context_data = _serialize_ai_chart_data(context.get("chart_data", {}), context_limit)
-    my_flat_context = _format_my_flat_context(context.get("my_flat") or {})
+    chart_data = context.get("chart_data", {})
+    my_flat = context.get("my_flat") or {}
+
+    if surface == "prediction" and _is_prediction_factor_question(question):
+        text = _build_prediction_factor_answer(chart_data, my_flat)
+        tier = session.get("subscription_tier", "general")
+        if tier != "premium":
+            _log_feature_view(_session_user_id(), "ai_answer")
+            remaining = max(0, GENERAL_DAILY_AI_ANSWER_LIMIT - used - 1)
+        else:
+            remaining = -1
+        return jsonify({"answer": text, "remaining": remaining})
+
+    context_data = _serialize_ai_chart_data(chart_data, context_limit)
+    my_flat_context = _format_my_flat_context(my_flat)
 
     prompt = _AI_ANSWER_PROMPT.format(
         surface_desc=surface_desc,
@@ -6698,7 +6849,8 @@ def api_ai_answer():
         question=question,
     )
 
-    text = _call_gemini(prompt, max_tokens=512)
+    temp = 0.15 if surface == "prediction" else 0.3
+    text = _call_gemini(prompt, max_tokens=512, temperature=temp)
     if not text:
         return jsonify({"error": "AI temporarily unavailable"}), 503
 
@@ -6738,7 +6890,10 @@ Rules:
 - On the analytics page, route property-vs-property ranking questions to the Comparison page; Analytics explains market trends and area context.
 - On the comparison page, route single-flat estimate questions to the Predict page and broad market trend questions to the Analytics page; Comparison explains side-by-side tradeoffs.
 - PropSight is a transparent, data-driven second opinion for HDB homeowners. It does not replace agents, provide transactional advisory, or tell users to buy, sell, or hold.
-- Only mention causes supported by the supplied data. If you mention broader market causes such as policy changes, interest rates, new MRT lines, COVID effects, or grants, frame them as possible context rather than fact.
+- Only mention causes supported by the supplied data. NEVER use these vague filler phrases, regardless of context: "strong demand", "positive attributes", "favourable factors", "various factors", "market dynamics", "desirable location", "good location", "increasing values", "values have been increasing", "likely higher than before". If you would otherwise reach for these, name the specific feature from chart_data, my_flat, or shap_features that drives your point (for example, "remaining lease of 62 years", "9th floor", "476m to nearest MRT", "town_avg_price of $1.42M"). If no specific data supports the point, do not make the point.
+- Your first sentence MUST contain at least one specific number, dollar figure, percentage, or named feature from the supplied context (for example, "$1.54M", "4.4%", "62 years", "Clementi Ave 3", "Improved model"). If you cannot ground the first sentence in a specific supplied value, say you do not have enough specific data to answer.
+- If the user asks about the biggest factor, main driver, strongest impact, or what affects the price most, use chart_data.shap_features[0]. State its label and exact dollar_impact. Do not answer with market_shock unless the top SHAP feature itself is a market-shock feature. If shap_features is missing or empty, say the specific factor breakdown is not available and point them to the SHAP breakdown if available.
+- When explaining any SHAP feature, use that feature's `description` field if supplied so the wording matches the SHAP card explanation.
 - If chart_data includes a `market_shock` object and its severity is
   not "stable", and the user asks anything about the local market
   direction, upswing, cooling, recent movement, or why the area is
@@ -6748,9 +6903,7 @@ Rules:
   rolling benchmark for the area, (3) tie it to the user's predicted
   price by name (e.g. "your $1.54M estimate"), and (4) note this is
   a recent local move, not a long-term trend. Do not paraphrase the
-  percentage away. Do not invent additional causes such as "strong
-  demand" or "positive attributes" unless those words appear in the
-  supplied data.
+  percentage away. Do not invent additional causes.
 - When discussing reliability or model error, do not overstate accuracy. Frame it as a data-driven estimate or second opinion, not a guaranteed valuation.
 - Singapore HDB context to apply where relevant: short remaining lease (<30 years) limits CPF usage and bank loan eligibility, reducing buyer pool and resale value; HDB flats have a 5-year MOP before they can be sold on the open market; low transaction count for a specific block often reflects estate composition or owners holding past MOP, not low demand; price swings on blocks with fewer than 20 transactions can be driven by 1–2 outlier sales.
 - Never give buy, sell, hold, or upgrade advice. PropSight is a decision-support tool only — help the user understand their market position, not tell them what to do.
@@ -6842,7 +6995,8 @@ def api_ai_chat():
         # Add current message
         contents.append({"role": "user", "parts": [{"text": f"<user_question>\n{message}\n</user_question>"}]})
 
-    text = _call_gemini_chat(contents, max_tokens=768)
+    temp = 0.15 if surface == "prediction" else 0.3
+    text = _call_gemini_chat(contents, max_tokens=768, temperature=temp)
     if not text:
         return jsonify({"error": "AI temporarily unavailable"}), 503
 
