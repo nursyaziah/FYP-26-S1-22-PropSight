@@ -182,6 +182,9 @@
                                    
                                 <a href="{{ url_for('map_view') }}?mode=transactions&town={{ p['town']|urlencode }}{% if p.get('street_name') %}&street={{ p['street_name']|urlencode }}{% endif %}{% if p.get('block') %}&block={{ p['block']|urlencode }}{% endif %}" 
                                    class="btn-ghost" title="View on Map"><i class="bi bi-geo-alt"></i></a>
+
+                                <a href="{{ url_for('analytics', town=p['town'], flat_type=p['flat_type'], flat_model=p['flat_model'], floor_area=p['floor_area']|int, storey_range=p['storey_range'], lease_commence=p['lease_commence']|int, street_name=p.get('street_name', ''), block=p.get('block', ''), predicted_price=p['predicted_price']|int, price_low=p['price_low']|int, price_high=p['price_high']|int) }}"
+                                   class="btn-ghost primary" title="Open Analytics"><i class="bi bi-bar-chart-line"></i></a>
                                    
                                 <a href="{{ url_for('comparison_select_saved', pred_id=p['id']) }}" 
                                    class="btn-ghost primary" title="Compare against others"><i class="bi bi-columns-gap"></i></a>
