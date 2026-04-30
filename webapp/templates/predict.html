@@ -1611,6 +1611,9 @@ body > nav, body > footer, body > header {
   "block": {{ form_data.get('block', '') | tojson }},
   "flat_model": {{ form_data.flat_model | tojson }},
   "lease_commence": {{ form_data.lease_commence | int }}
+  {% if result.market_shock %},
+  "market_shock": {{ result.market_shock | tojson }}
+  {% endif %}
   {% if explanation %},
   "narrative": {{ explanation.narrative | tojson }},
   "shap_features": {{ explanation.features | tojson }}
@@ -2118,7 +2121,8 @@ if (pForm && subBtn) {
       town_avg_price: ctx.town_avg_price,
       mape: ctx.mape,
       narrative: ctx.narrative || null,
-      shap_features: ctx.shap_features || []
+      shap_features: ctx.shap_features || [],
+      market_shock: ctx.market_shock || null,
     },
     my_flat: {
       town: ctx.town || '',

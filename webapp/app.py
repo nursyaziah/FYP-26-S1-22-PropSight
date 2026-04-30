@@ -6413,6 +6413,23 @@ def _format_my_flat_context(my_flat):
     return "THE USER'S OWN FLAT: " + ", ".join(parts) + "."
 
 
+def _serialize_ai_chart_data(chart_data, limit):
+    if not isinstance(chart_data, dict):
+        return json.dumps(chart_data or {}, default=str)[:limit]
+
+    market_shock = chart_data.get("market_shock")
+    if isinstance(market_shock, dict) and market_shock:
+        prioritized = {"market_shock": market_shock}
+        prioritized.update({
+            key: value
+            for key, value in chart_data.items()
+            if key != "market_shock"
+        })
+        return json.dumps(prioritized, default=str)[:limit]
+
+    return json.dumps(chart_data, default=str)[:limit]
+
+
 _AI_QUESTIONS_PROMPT = """You are a Singapore HDB (public housing) market analyst.
 The user is viewing analytics for: {filter_desc}
 
@@ -6496,6 +6513,18 @@ If the user asks to compare areas inside a town (for example "Tampines East vs T
 
 Avoid jargon and technical terms. Write as if explaining to someone who doesn't follow the property market.
 Only mention causes that are supported by the supplied data. If you mention broader market causes, frame them as possible context rather than fact.
+- If chart_data includes a `market_shock` object and its severity is
+  not "stable", and the user asks anything about the local market
+  direction, upswing, cooling, recent movement, or why the area is
+  hot/quiet, you MUST: (1) quote the exact percentage figure from
+  market_shock.summary (e.g. "4.4% above its 3-month benchmark"),
+  (2) explain it as the latest 1-month local $/sqm versus its 3-month
+  rolling benchmark for the area, (3) tie it to the user's predicted
+  price by name (e.g. "your $1.54M estimate"), and (4) note this is
+  a recent local move, not a long-term trend. Do not paraphrase the
+  percentage away. Do not invent additional causes such as "strong
+  demand" or "positive attributes" unless those words appear in the
+  supplied data.
 When discussing reliability or model error, do not overstate accuracy. Frame it as a data-driven estimate or second opinion, not a guaranteed valuation.
 Do not give buy/sell/hold/renovate/rent advice — PropSight is decision-support only. Criteria-based comparison questions like "best value", "best location", or "which factor should I prioritise" are allowed, but answer them as data tradeoffs rather than instructions. If the question asks for a transaction recommendation, answer the FACTUAL part if there is one (e.g. "is demand rising here" has a factual answer), then steer the user toward relevant data PropSight already shows: lease decay, comparable transactions, demand trend, position vs town average. Never tell them what to do with their flat.
 
@@ -6658,7 +6687,7 @@ def api_ai_answer():
     filter_desc = _build_ai_filter_desc(context, surface)
     surface_desc = _build_ai_surface_desc(surface)
     context_limit = 3200 if surface == "comparison" else 1500
-    context_data = json.dumps(context.get("chart_data", {}), default=str)[:context_limit]
+    context_data = _serialize_ai_chart_data(context.get("chart_data", {}), context_limit)
     my_flat_context = _format_my_flat_context(context.get("my_flat") or {})
 
     prompt = _AI_ANSWER_PROMPT.format(
@@ -6710,6 +6739,18 @@ Rules:
 - On the comparison page, route single-flat estimate questions to the Predict page and broad market trend questions to the Analytics page; Comparison explains side-by-side tradeoffs.
 - PropSight is a transparent, data-driven second opinion for HDB homeowners. It does not replace agents, provide transactional advisory, or tell users to buy, sell, or hold.
 - Only mention causes supported by the supplied data. If you mention broader market causes such as policy changes, interest rates, new MRT lines, COVID effects, or grants, frame them as possible context rather than fact.
+- If chart_data includes a `market_shock` object and its severity is
+  not "stable", and the user asks anything about the local market
+  direction, upswing, cooling, recent movement, or why the area is
+  hot/quiet, you MUST: (1) quote the exact percentage figure from
+  market_shock.summary (e.g. "4.4% above its 3-month benchmark"),
+  (2) explain it as the latest 1-month local $/sqm versus its 3-month
+  rolling benchmark for the area, (3) tie it to the user's predicted
+  price by name (e.g. "your $1.54M estimate"), and (4) note this is
+  a recent local move, not a long-term trend. Do not paraphrase the
+  percentage away. Do not invent additional causes such as "strong
+  demand" or "positive attributes" unless those words appear in the
+  supplied data.
 - When discussing reliability or model error, do not overstate accuracy. Frame it as a data-driven estimate or second opinion, not a guaranteed valuation.
 - Singapore HDB context to apply where relevant: short remaining lease (<30 years) limits CPF usage and bank loan eligibility, reducing buyer pool and resale value; HDB flats have a 5-year MOP before they can be sold on the open market; low transaction count for a specific block often reflects estate composition or owners holding past MOP, not low demand; price swings on blocks with fewer than 20 transactions can be driven by 1–2 outlier sales.
 - Never give buy, sell, hold, or upgrade advice. PropSight is a decision-support tool only — help the user understand their market position, not tell them what to do.
@@ -6767,7 +6808,7 @@ def api_ai_chat():
     surface_desc = _build_ai_surface_desc(surface, active_section)
 
     context_limit = 3200 if surface == "comparison" else 1500
-    context_data = json.dumps(context.get("chart_data", {}), default=str)[:context_limit]
+    context_data = _serialize_ai_chart_data(context.get("chart_data", {}), context_limit)
     my_flat_context = _format_my_flat_context(context.get("my_flat") or {})
 
     system_text = _AI_CHAT_SYSTEM_PROMPT.format(
