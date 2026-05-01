@@ -2915,6 +2915,8 @@ def api_premium_required(f):
 # Weekly view limits for general users per feature
 GENERAL_WEEKLY_VIEW_LIMITS = {"map": 3, "analytics": 3, "comparison": 3}
 FEATURE_VIEW_RELOAD_GRACE_SECONDS = 20
+REGISTERED_LANDING_SEEN_FEATURE = "registered_landing_seen"
+REGISTERED_LANDING_SEEN_SESSION_KEY = "_registered_landing_seen"
 ANALYTICS_SCOPE_SESSION_KEY = "_analytics_last_counted_scope"
 ANALYTICS_ALL_TOWNS_SCOPE = "__all_towns__"
 ANALYTICS_PENDING_FIRST_TOWN_SELECTION_SESSION_KEY = "_analytics_pending_first_town_selection"
@@ -2938,6 +2940,48 @@ def _log_feature_view(user_id, feature):
         )
     except SupabaseError as exc:
         app.logger.warning("Could not log feature view %s for user %s: %s", feature, user_id, exc)
+
+
+def _registered_landing_has_been_seen(user_id):
+    """Return whether a signed-in user has already seen the landing page."""
+    if user_id is None:
+        return False
+    if session.get(REGISTERED_LANDING_SEEN_SESSION_KEY):
+        return True
+
+    try:
+        rows = _supabase_request(
+            "feature_view_log",
+            filters={
+                "select": "id",
+                "user_id": f"eq.{user_id}",
+                "feature": f"eq.{REGISTERED_LANDING_SEEN_FEATURE}",
+                "limit": "1",
+            },
+        ) or []
+    except SupabaseError as exc:
+        app.logger.warning("Could not check registered landing view for user %s: %s", user_id, exc)
+        return False
+
+    if rows:
+        session[REGISTERED_LANDING_SEEN_SESSION_KEY] = True
+        return True
+    return False
+
+
+def _mark_registered_landing_seen(user_id):
+    """Persist that a signed-in user has seen the landing page."""
+    if user_id is None:
+        return
+    _log_feature_view(user_id, REGISTERED_LANDING_SEEN_FEATURE)
+    session[REGISTERED_LANDING_SEEN_SESSION_KEY] = True
+
+
+def _post_auth_redirect_target(next_url, user_id):
+    """Choose where a normal user should land after login or registration."""
+    if user_id is not None and not _registered_landing_has_been_seen(user_id):
+        return url_for("landing")
+    return next_url or url_for("home")
 
 
 def _reset_usage_counters_after_downgrade(user_id):
@@ -4398,7 +4442,7 @@ def register():
                 flash("Account created and Premium activated. Welcome!", "success")
             else:
                 flash("Account created! Welcome.", "success")
-            return redirect(next_url or url_for("home"))
+            return redirect(_post_auth_redirect_target(next_url, _session_user_id()))
 
         if initial_tier == "premium":
             flash("Account created with Premium selected. Check your email to confirm before logging in.", "success")
@@ -4462,7 +4506,7 @@ def login():
         session["access_token"] = result.get("access_token", "")
         session["subscription_tier"] = db_user.get("subscription_tier", "general")
         flash(f"Welcome back, {session['username']}!", "success")
-        return redirect(next_url or url_for("home"))
+        return redirect(_post_auth_redirect_target(next_url, _session_user_id()))
 
     return render_template("login.html", next_url=next_url)
 
@@ -4731,6 +4775,15 @@ def _attach_prediction_coordinates(predictions, town_coords):
 @app.route("/")
 def landing():
     """Public marketing landing page."""
+    if _is_admin_session():
+        return redirect(url_for("admin_dashboard"))
+
+    user_id = _session_user_id()
+    if user_id is not None:
+        if _registered_landing_has_been_seen(user_id):
+            return redirect(url_for("home"))
+        _mark_registered_landing_seen(user_id)
+
     plan_config = _load_subscription_plan_config()
     premium = plan_config["premium"]
     try:
@@ -4762,6 +4815,10 @@ def review_page():
 def home():
     if _is_admin_session():
         return redirect(url_for("admin_dashboard"))
+
+    user_id = _session_user_id()
+    if user_id is not None and not _registered_landing_has_been_seen(user_id):
+        return redirect(url_for("landing"))
 
     # Total transaction count
     try:
@@ -7573,6 +7630,10 @@ def api_admin_overview():
                 "limit": "20000",
             },
         ) or []
+        feature_rows = [
+            r for r in feature_rows
+            if r.get("feature") != REGISTERED_LANDING_SEEN_FEATURE
+        ]
         pred_rows = [r for r in feature_rows if r.get("feature") == "predict"]
 
         # Fallback if prediction events are unavailable
