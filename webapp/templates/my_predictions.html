@@ -189,9 +189,9 @@
                                 <a href="{{ url_for('comparison_select_saved', pred_id=p['id']) }}" 
                                    class="btn-ghost primary" title="Compare against others"><i class="bi bi-columns-gap"></i></a>
                                    
-                                <form method="POST" action="{{ url_for('delete_prediction', pred_id=p['id']) }}" onsubmit="return confirm('Delete this prediction?')" style="display:inline">
-                                    <button type="submit" class="btn-ghost danger" title="Delete"><i class="bi bi-trash"></i></button>
-                                </form>
+                                <button type="submit" form="delete-pred-{{ p['id'] }}" class="btn-ghost danger" title="Delete">
+                                    <i class="bi bi-trash"></i>
+                                </button>
                             </div>
                         </td>
                     </tr>
@@ -201,6 +201,15 @@
         </div>
     </div>
     </form>
+        {% for p in predictions %}
+        <form
+            id="delete-pred-{{ p['id'] }}"
+            method="POST"
+            action="{{ url_for('delete_prediction', pred_id=p['id']) }}"
+            onsubmit="return confirm('Delete this prediction?')"
+            style="display:none"
+        ></form>
+        {% endfor %}
         <script>
             var IS_PREMIUM = {{ 'true' if session.get('subscription_tier') == 'premium' else 'false' }};
             var MAX_COMPARE = IS_PREMIUM ? 5 : 2;

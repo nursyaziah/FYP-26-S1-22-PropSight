@@ -1761,8 +1761,10 @@ def _parse_saved_prediction_timestamp(value):
                 except ValueError:
                     continue
 
-    if parsed and parsed.tzinfo is not None:
-        return parsed.astimezone()
+    if parsed:
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(SGT)
     return parsed
 
 
