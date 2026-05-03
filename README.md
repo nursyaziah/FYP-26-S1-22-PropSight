@@ -22,15 +22,26 @@ If you are new to the repo, start here:
 4. [`ML/model_training.py`](ML/model_training.py) for training, evaluation, and winner selection
 5. [`Database/supabase_schema.sql`](Database/supabase_schema.sql) for the live database schema and RPCs
 
-## Current Repo Snapshot
+## Model Artefact Source Of Truth
 
-As committed in this repo today:
+Model runs are timestamped directories under [`ML/model_assets/`](ML/model_assets/).
+Each complete run contains the winner model pickle, `metrics.json`,
+`feature_cols.txt`, `run_manifest.json`, `training_report.txt`, and supporting
+preprocessing artefacts.
 
-- `ML/model_assets/latest.txt` points to `model_assets/20260417_074102`
-- that checked-in run declares `catboost` as the winner
-- the recorded refit test metrics are `MAPE=3.6447%`, `RMSE=34,699.2`, `R2=0.973872`
+Do not treat this README, or the checked-in [`ML/model_assets/latest.txt`](ML/model_assets/latest.txt),
+as the authoritative source for the latest production model. New model artefacts
+are produced by the scheduled GitHub Actions retrain workflow. During that job,
+`latest.txt` is used as a local pipeline pointer to the freshly generated run,
+but the checked-in copy can lag behind GitHub-scheduled output. The live
+promotion record is the `model_versions` row written to Supabase.
 
-Those values come from [`ML/model_assets/20260417_074102/metrics.json`](ML/model_assets/20260417_074102/metrics.json).
+To inspect model state:
+
+- for a local app run, check which artefact directory `webapp/app.py` resolves at startup
+- for the current scheduled GitHub model, check the latest successful `Weekly Model Retrain` workflow run and the run directory named in its commit message
+- for the promoted production model, check the active row in Supabase `model_versions`
+- for any specific checked-in run, open that run's `metrics.json` and `training_report.txt`
 
 ## Live Deployment
 
@@ -55,7 +66,8 @@ What they do:
 - `Weekly Data Refresh` runs on a schedule every Wednesday at `03:00 UTC`, which is `11:00 SGT`, and can also be started manually with `workflow_dispatch`
 - it runs the preprocessing pipeline via `python run_data_preprocessing.py`
 - `Weekly Model Retrain` runs after a successful `Weekly Data Refresh`, and can also be started manually
-- it runs the ML pipeline, commits updated model artefacts, syncs model metadata to Supabase, and optionally triggers a Render deployment
+- it runs the ML pipeline from Supabase training data, checks the promotion guard, commits the winner model artefacts, syncs model metadata to Supabase, and optionally triggers a Render deployment
+- the retrain workflow is the normal path for new model artefacts in GitHub; local `latest.txt` can lag or point somewhere different from production
 
 ## Quick Start
 
@@ -76,7 +88,6 @@ For the web app plus model loading:
 
 ```bash
 pip install -r webapp/requirements.txt
-pip install xgboost
 ```
 
 For the full pipeline as well:
@@ -94,8 +105,7 @@ pip install matplotlib seaborn scipy
 
 Notes:
 
-- [`webapp/requirements.txt`](webapp/requirements.txt) already includes `flask`, `pandas`, `numpy`, `scikit-learn`, `lightgbm`, `catboost`, `shap`, `gunicorn`, and `pyarrow`
-- `xgboost` is not in that file, but older and alternate model artefacts can still need it at load time
+- [`webapp/requirements.txt`](webapp/requirements.txt) already includes `flask`, `pandas`, `numpy`, `scikit-learn`, `lightgbm`, `catboost`, `xgboost`, `shap`, `gunicorn`, and `pyarrow`
 - the deployment runtime file is [`webapp/runtime.txt`](webapp/runtime.txt), currently `python-3.12.6`
 
 ### 3. Create a `.env`
@@ -137,6 +147,7 @@ HDB_SQLITE_PATH=Data Preprocessing/hdb_resale.db
 HDB_REFERENCE_DATA_DIR=Data Preprocessing/reference_data
 SUPABASE_USERS_TABLE=users
 SUPABASE_PREDICTIONS_TABLE=saved_predictions
+SUPABASE_REVIEWS_TABLE=reviews
 FLASK_HOST=127.0.0.1
 FLASK_PORT=5001
 HDB_BACKFILL_GEOCODING=1
@@ -218,6 +229,11 @@ This does two things:
 - syncs processed SQLite data into the normalized Supabase tables
 - updates `model_versions` using the run pointed to by `ML/model_assets/latest.txt`
 
+Important local note:
+
+- this script still reads `latest.txt`, so make sure that file points to the run you intend to promote before running it manually
+- for the scheduled GitHub path, the workflow-generated `latest.txt` inside the job points to the new run before model metadata is synced
+
 Deployment guard:
 
 - the sync step refuses to promote a new model if its test MAPE is more than `MAX_MAPE_REGRESSION_PCT` worse than the currently active deployed model
@@ -270,6 +286,7 @@ The Flask app in [`webapp/app.py`](webapp/app.py) currently provides:
 - authenticated prediction flow with saved predictions
 - interactive map and analytics dashboards backed by Supabase RPCs
 - property comparison with saved-prediction shortcuts
+- logged-in user review submission and public approved-review display
 - admin dashboard for user management, platform stats, notifications, and model inventory
 - optional Gemini-powered AI helpers when `GEMINI_API_KEY` is configured
 
@@ -294,6 +311,7 @@ Authenticated:
 - `/map`
 - `/analytics`
 - `/upgrade`
+- `/review`
 
 Admin:
 
@@ -387,6 +405,7 @@ Important current behavior:
 This is easy to miss:
 
 - `latest.txt` is not used automatically unless `MODEL_USE_LATEST_TXT` is enabled
+- without `MODEL_USE_LATEST_TXT`, a newer valid local run folder can be loaded even if `latest.txt` points somewhere else
 - the app expects at least `scaler.pkl`, `target_encoders.pkl`, and `metrics.json`
 - it then loads the winner model pickle declared by the run metadata
 
@@ -401,6 +420,7 @@ At a high level the runtime database contains:
 - transaction facts in `transactions`
 - app user data in `users`
 - saved prediction rows in `saved_predictions`
+- public/user review rows in `reviews`
 - usage and feature limits in `feature_view_log`
 - model deployment history in `model_versions`
 
