@@ -641,7 +641,7 @@ def _format_model_trained_at(run_at_str):
     dt = _parse_model_run_at(run_at_str)
     if dt is None:
         return None
-    return dt.astimezone(SGT).strftime("%-d %b %Y, %-I:%M %p SGT")
+    return dt.astimezone(SGT).strftime("%d %b %Y, %I:%M %p SGT")
 
 
 def _build_model_performance(metrics, manifest, serving_model_key):
