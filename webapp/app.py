@@ -3811,6 +3811,36 @@ def _generate_shap_ai_summary(features, predicted_price, town, flat_type,
     return cleaned[:700] if cleaned else None
 
 
+LEASE_DECAY_MATCH_TERMS = ("lease", "age", "remaining_lease", "lease_start", "flat_age")
+
+
+def _is_lease_decay_shap_feature(item):
+    if not isinstance(item, dict):
+        return False
+    match_text = f"{item.get('key', '')} {item.get('label', '')}".lower()
+    return any(term in match_text for term in LEASE_DECAY_MATCH_TERMS)
+
+
+def _build_lease_decay_breakdown(features):
+    components = []
+    for item in features or []:
+        if not _is_lease_decay_shap_feature(item):
+            continue
+        impact = _coerce_float(item.get("dollar_impact"))
+        if impact is None:
+            continue
+        components.append({
+            "key": item.get("key"),
+            "label": item.get("label") or item.get("key"),
+            "dollar_impact": int(round(impact)),
+        })
+    return {
+        "total_dollar_impact": int(sum(item["dollar_impact"] for item in components)),
+        "components": components,
+        "component_count": len(components),
+    }
+
+
 def compute_shap_explanation(town, flat_type, flat_model, floor_area, storey_range,
                              lease_commence, predicted_price=None, override_year=None,
                              override_distances=None, town_avg_price=None,
@@ -3917,6 +3947,8 @@ def compute_shap_explanation(town, flat_type, flat_model, floor_area, storey_ran
     else:
         narrative = ""
 
+    lease_decay_breakdown = _build_lease_decay_breakdown(rounded_items)
+
     return {
         "features": rounded_items,
         "baseline_price": int(round(baseline_price)),
@@ -3927,6 +3959,7 @@ def compute_shap_explanation(town, flat_type, flat_model, floor_area, storey_ran
         "model_label": ARTEFACTS.get("model_label", "Model"),
         "feature_count": len(rounded_items),
         "market_shock": market_shock,
+        "lease_decay_breakdown": lease_decay_breakdown,
     }
 
 
@@ -6478,36 +6511,53 @@ def _format_my_flat_context(my_flat):
     return "THE USER'S OWN FLAT: " + ", ".join(parts) + "."
 
 
+def _compact_shap_features_for_ai(shap_features):
+    if not isinstance(shap_features, list):
+        return []
+    compact = []
+    for item in shap_features:
+        if not isinstance(item, dict):
+            continue
+        impact = _coerce_float(item.get("dollar_impact"))
+        if impact is None:
+            continue
+        compact.append({
+            "key": item.get("key"),
+            "label": item.get("label") or item.get("key"),
+            "dollar_impact": int(round(impact)),
+        })
+    return compact
+
+
 def _serialize_ai_chart_data(chart_data, limit):
     if not isinstance(chart_data, dict):
         return json.dumps(chart_data or {}, default=str)[:limit]
 
+    shap_answer_focus = chart_data.get("shap_answer_focus")
+    lease_decay_breakdown = chart_data.get("lease_decay_breakdown")
+    shap_features = _compact_shap_features_for_ai(chart_data.get("shap_features"))
     market_shock = chart_data.get("market_shock")
+    prioritized = {}
+    if isinstance(shap_answer_focus, dict) and shap_answer_focus:
+        prioritized["shap_answer_focus"] = shap_answer_focus
+    if isinstance(lease_decay_breakdown, dict) and lease_decay_breakdown:
+        prioritized["lease_decay_breakdown"] = lease_decay_breakdown
+    if shap_features:
+        prioritized["shap_features"] = shap_features
     if isinstance(market_shock, dict) and market_shock:
-        prioritized = {"market_shock": market_shock}
+        prioritized["market_shock"] = market_shock
+    if prioritized:
         prioritized.update({
             key: value
             for key, value in chart_data.items()
-            if key != "market_shock"
+            if key not in prioritized
         })
         return json.dumps(prioritized, default=str)[:limit]
 
     return json.dumps(chart_data, default=str)[:limit]
 
 
-def _is_prediction_factor_question(question):
-    text = str(question or "").strip().lower()
-    if not text:
-        return False
-    patterns = [
-        r"\bwhich\s+factor\b",
-        r"\b(biggest|main|strongest|top|most\s+important)\b.*\b(factor|driver|impact|influence|affect)",
-        r"\bwhat\s+(affects|drives|influences)\b.*\b(price|estimate|value)",
-    ]
-    return any(re.search(pattern, text) for pattern in patterns)
-
-
-def _compute_top_prediction_factor(chart_data, my_flat):
+def _get_prediction_shap_features(chart_data, my_flat):
     if not isinstance(chart_data, dict):
         chart_data = {}
     if not isinstance(my_flat, dict):
@@ -6515,11 +6565,13 @@ def _compute_top_prediction_factor(chart_data, my_flat):
 
     shap_features = chart_data.get("shap_features")
     if isinstance(shap_features, list) and shap_features:
-        return next((item for item in shap_features if isinstance(item, dict)), None)
+        features = [item for item in shap_features if isinstance(item, dict)]
+        if features:
+            return features
 
     required = ("town", "flat_type", "flat_model", "floor_area", "storey_range", "lease_commence")
     if any(my_flat.get(key) in (None, "") for key in required):
-        return None
+        return []
 
     block_distances = None
     if my_flat.get("street_name"):
@@ -6546,92 +6598,300 @@ def _compute_top_prediction_factor(chart_data, my_flat):
             generate_narrative=False,
         )
     except Exception:
-        app.logger.warning("On-demand top SHAP factor failed", exc_info=True)
-        return None
+        app.logger.warning("On-demand SHAP features failed", exc_info=True)
+        return []
 
     features = (explanation or {}).get("features")
     if isinstance(features, list) and features:
-        return next((item for item in features if isinstance(item, dict)), None)
+        return [item for item in features if isinstance(item, dict)]
+    return []
+
+
+_SHAP_MATCH_STOPWORDS = {
+    "a", "about", "above", "affect", "affecting", "affects", "after", "against",
+    "all", "am", "an", "and", "any", "are", "as", "at", "be", "because", "below",
+    "by", "can", "compared", "cost", "costing", "decrease", "decreasing", "did",
+    "do", "does", "dollar", "down", "effect", "estimate", "estimated", "factor",
+    "feature", "for", "from", "has", "have", "hdb", "help", "how", "i", "impact",
+    "in", "increase", "increasing", "is", "it", "left", "less", "lower", "me",
+    "more", "much", "my", "of", "on", "price", "pull", "push", "reduce",
+    "reducing", "sale", "sell", "selling", "than", "the", "this", "to", "up",
+    "value", "what", "why", "with", "worth", "your",
+}
+
+_SHAP_IMPACT_PATTERN = re.compile(
+    r"\b(shap|impact|affect|affects|effect|add|adds|adding|cost|costing|reduce|"
+    r"reduces|reducing|drag|boost|push|pull|contribute|contribution|why|factor|"
+    r"feature|lower|increase|decrease|dollar)\b"
+)
+
+_SHAP_DISTINCTIVE_TOKENS = {
+    "age", "area", "cagr", "cbd", "cpf", "floor", "hawker", "lease", "mall",
+    "mature", "maturity", "model", "momentum", "mrt", "national", "psf", "school",
+    "seasonal", "shock", "size", "sora", "sqm", "storey", "town", "type", "volume",
+}
+
+_SHAP_GROUP_MATCHERS = {
+    "schools": {
+        "question_pattern": re.compile(
+            r"\b(school|schools|primary|education|popular\s+primary|high\s+demand\s+primary)\b"
+        ),
+        "feature_terms": ("school", "primary"),
+        "label": "school-related SHAP impact",
+    },
+}
+
+
+def _shap_match_tokens(text):
+    normalized = str(text or "").lower().replace("$/sqm", " psf sqm ")
+    tokens = set()
+    for token in re.findall(r"[a-z0-9]+", normalized):
+        if token.isdigit():
+            continue
+        if len(token) > 3 and token.endswith("s"):
+            token = token[:-1]
+        if token and token not in _SHAP_MATCH_STOPWORDS:
+            tokens.add(token)
+    return tokens
+
+
+def _shap_feature_match_text(feature):
+    key = str(feature.get("key") or "")
+    label = str(feature.get("label") or "")
+    description = str(feature.get("description") or "")
+    alias_bits = [key.replace("_", " "), label, description]
+    if key == "floor_area_sqm":
+        alias_bits.append("size big larger square metre square meter sqm")
+    elif key == "storey_midpoint":
+        alias_bits.append("floor level storey high mid low")
+    elif key.startswith("dist_"):
+        alias_bits.append("distance near nearby proximity")
+    elif key == "flat_model_enc":
+        alias_bits.append("model design layout")
+    elif key == "flat_type_ordinal":
+        alias_bits.append("type room size category")
+    elif key == "is_mature_estate":
+        alias_bits.append("mature estate maturity")
+    elif key in {"town_flattype_psf_1m", "town_flattype_psf_3m"}:
+        alias_bits.append("psf sqm price per square metre")
+    return " ".join(alias_bits)
+
+
+def _best_matching_shap_feature(question, features):
+    question_tokens = _shap_match_tokens(question)
+    if not question_tokens:
+        return None
+
+    best = None
+    best_score = 0
+    best_overlap = set()
+    tied = False
+    for feature in features or []:
+        feature_tokens = _shap_match_tokens(_shap_feature_match_text(feature))
+        overlap = question_tokens & feature_tokens
+        score = len(overlap)
+        key_tokens = _shap_match_tokens(str(feature.get("key") or "").replace("_", " "))
+        if key_tokens and key_tokens.issubset(question_tokens):
+            score += 2
+        if score > best_score:
+            best = feature
+            best_score = score
+            best_overlap = overlap
+            tied = False
+        elif score == best_score and score > 0:
+            tied = True
+
+    if best_score >= 2:
+        return None if tied and best_score < 4 else best
+    if best_score == 1 and best_overlap & _SHAP_DISTINCTIVE_TOKENS:
+        return None if tied else best
     return None
 
 
-def _build_prediction_factor_answer(chart_data, my_flat):
-    if not isinstance(chart_data, dict):
-        chart_data = {}
-    if not isinstance(my_flat, dict):
-        my_flat = {}
+def _is_lease_decay_impact_question(question):
+    text = str(question or "").lower()
+    has_lease_term = re.search(r"\b(lease|remaining\s+lease|lease\s+decay)\b", text)
+    return bool(has_lease_term and _SHAP_IMPACT_PATTERN.search(text))
 
-    predicted = _coerce_float(my_flat.get("predicted_price") or chart_data.get("predicted_price"))
-    estimate_text = f"${predicted:,.0f}" if predicted is not None else "this estimate"
 
-    top_feature = _compute_top_prediction_factor(chart_data, my_flat)
-    if top_feature:
-        label = str(top_feature.get("label") or top_feature.get("key") or "the top model factor").strip()
-        impact = _coerce_float(top_feature.get("dollar_impact"))
-        market_shock = chart_data.get("market_shock")
-        has_market_shock = (
-            isinstance(market_shock, dict)
-            and str(market_shock.get("severity") or "").strip().lower()
-            not in {"", "stable"}
+def _compact_shap_feature_for_focus(feature):
+    if not isinstance(feature, dict):
+        return None
+    impact = _coerce_float(feature.get("dollar_impact"))
+    if impact is None:
+        return None
+    compact = {
+        "key": feature.get("key"),
+        "label": feature.get("label") or feature.get("key"),
+        "dollar_impact": int(round(impact)),
+    }
+    description = str(feature.get("description") or "").strip()
+    if description:
+        compact["description"] = description
+    return compact
+
+
+def _shap_total_metadata(total):
+    total_int = int(round(_coerce_float(total, 0) or 0))
+    if total_int < 0:
+        direction = "reduces"
+    elif total_int > 0:
+        direction = "adds"
+    else:
+        direction = "has no rounded net impact on"
+    return {
+        "total_abs_dollar_impact": abs(total_int),
+        "total_direction": direction,
+    }
+
+
+def _build_grouped_shap_focus(kind, label, components, instruction):
+    clean_components = []
+    for item in components or []:
+        compact = _compact_shap_feature_for_focus(item)
+        if compact:
+            clean_components.append(compact)
+    if not clean_components:
+        return None
+    total = int(sum(item["dollar_impact"] for item in clean_components))
+    return {
+        "kind": kind,
+        "label": label,
+        "total_dollar_impact": total,
+        **_shap_total_metadata(total),
+        "components": clean_components,
+        "component_count": len(clean_components),
+        "instruction": instruction,
+    }
+
+
+def _shap_feature_contains_any(feature, terms):
+    text = _shap_feature_match_text(feature).lower()
+    return any(term in text for term in terms)
+
+
+def _build_category_shap_focus(question, features):
+    text = str(question or "").lower()
+    for group_key, config in _SHAP_GROUP_MATCHERS.items():
+        if not config["question_pattern"].search(text):
+            continue
+        components = [
+            item for item in features or []
+            if _shap_feature_contains_any(item, config["feature_terms"])
+        ]
+        return _build_grouped_shap_focus(
+            f"{group_key}_shap_features",
+            config["label"],
+            components,
+            (
+                "Gemini must write the final answer using this grouped SHAP focus. "
+                "Quote total_dollar_impact with its sign as the net grouped impact, "
+                "list every component label with its signed dollar_impact, and do not "
+                "invent extra group components or dollar amounts. For wording, do not "
+                "say 'reducing by -$X'; say either 'net impact is -$X' or 'reducing by $X'."
+            ),
         )
-        context_sentence = (
-            "That is the feature-level explanation, separate from the recent local market signal."
-            if has_market_shock
-            else "That comes from the model's feature-level breakdown."
-        )
-        description = str(top_feature.get("description") or "").strip()
-        if description.lower().startswith("how "):
-            description = "This reflects " + description[0].lower() + description[1:]
-        if impact is not None:
-            impact_phrase = (
-                f"adds about ${abs(impact):,.0f}"
-                if impact >= 0
-                else f"reduces the estimate by about ${abs(impact):,.0f}"
-            )
-            detail_sentence = f" {description}" if description else f" {context_sentence}"
-            return (
-                f"For your {estimate_text} estimate, {label} is the biggest model factor, "
-                f"and it {impact_phrase}."
-                f"{detail_sentence}"
-            )
-        detail_sentence = f" {description}" if description else f" {context_sentence}"
-        return (
-            f"For your {estimate_text} estimate, {label} is the biggest model factor, "
-            f"but the exact dollar impact is not available in the supplied context."
-            f"{detail_sentence}"
-        )
+    return None
 
-    review_bits = []
-    market_shock = chart_data.get("market_shock")
-    if isinstance(market_shock, dict):
-        summary = str(market_shock.get("summary") or "").strip()
-        match = re.search(r"\d+(?:\.\d+)?%", summary)
-        if match:
-            review_bits.append(f"the {match.group(0)} local market signal")
-    town_avg = _coerce_float(chart_data.get("town_avg_price"))
-    if town_avg is not None:
-        review_bits.append(f"the town average of ${town_avg:,.0f}")
-    remaining_lease = _coerce_float(chart_data.get("remaining_lease"))
-    if remaining_lease is not None:
-        review_bits.append(f"the remaining lease of {remaining_lease:,.0f} years")
 
-    if review_bits:
-        review_text = ", ".join(review_bits[:-1])
-        if len(review_bits) > 1:
-            review_text += f", and {review_bits[-1]}"
-        else:
-            review_text = review_bits[0]
-        return (
-            f"For your {estimate_text} estimate, I cannot name the single biggest model factor because "
-            f"the SHAP factor breakdown is not included in this general-user context. "
-            f"Review {review_text}; Premium SHAP shows the exact factor-by-factor dollar impact."
-        )
-
-    return (
-        f"For your {estimate_text}, I cannot name the single biggest model factor because the SHAP "
-        "factor breakdown is not included in this general-user context. Premium SHAP shows the exact "
-        "factor-by-factor dollar impact."
+def _is_negative_shap_group_question(question):
+    text = str(question or "").lower()
+    return bool(
+        re.search(r"\b(below\s+(the\s+)?baseline|negative\s+(factors?|drivers?|features?)|downward\s+pressure)\b", text)
+        or re.search(r"\b(factors?|features?|drivers?)\b.*\b(reduc|pull|drag|lower|below|negative|cost)", text)
+        or re.search(r"\b(reduc|pull|drag|lower|cost).*\b(factors?|features?|drivers?)\b", text)
     )
+
+
+def _build_negative_shap_focus(question, features):
+    if not _is_negative_shap_group_question(question):
+        return None
+    negative_components = [
+        item for item in features or []
+        if (_coerce_float(item.get("dollar_impact")) or 0) < 0
+    ]
+    negative_components.sort(
+        key=lambda item: abs(_coerce_float(item.get("dollar_impact"), 0) or 0),
+        reverse=True,
+    )
+    return _build_grouped_shap_focus(
+        "negative_shap_features",
+        "negative SHAP factors",
+        negative_components[:8],
+        (
+            "Gemini must write the final answer using these negative SHAP factors. "
+            "Say these are the main negative SHAP components, quote total_dollar_impact "
+            "with its sign as the sum of the components provided, list every component "
+            "label with its signed dollar_impact, and do not claim this is every negative "
+            "factor unless all negative factors are explicitly provided. For wording, do "
+            "not say 'reducing by -$X'; say either 'net impact is -$X' or 'reducing by $X'."
+        ),
+    )
+
+
+def _build_prediction_shap_focus(question, chart_data, my_flat):
+    text = str(question or "").strip()
+    if not text:
+        return None
+
+    features = _get_prediction_shap_features(chart_data, my_flat)
+
+    if _is_lease_decay_impact_question(text):
+        breakdown = chart_data.get("lease_decay_breakdown") if isinstance(chart_data, dict) else None
+        if not isinstance(breakdown, dict) or not breakdown.get("component_count"):
+            breakdown = _build_lease_decay_breakdown(features)
+        components = breakdown.get("components") if isinstance(breakdown, dict) else []
+        if not components:
+            return {
+                "kind": "lease_decay",
+                "missing": True,
+                "instruction": (
+                    "Gemini should say the lease/age SHAP breakdown is not available "
+                    "and must not quote a lease impact dollar amount."
+                ),
+            }
+        return {
+            "kind": "lease_decay",
+            "total_dollar_impact": int(round(_coerce_float(
+                breakdown.get("total_dollar_impact"),
+                0,
+            ) or 0)),
+            **_shap_total_metadata(breakdown.get("total_dollar_impact")),
+            "components": components,
+            "instruction": (
+                "Gemini must write the final answer. Quote the total_dollar_impact as "
+                "the total lease decay impact, list every component label with its "
+                "dollar_impact, and do not add a caveat sentence about a separate "
+                "newer-flat simulation. For wording, do not say 'reducing by -$X'; "
+                "say either 'net impact is -$X' or 'reducing by $X'."
+            ),
+        }
+
+    category_focus = _build_category_shap_focus(text, features)
+    if category_focus:
+        return category_focus
+
+    negative_focus = _build_negative_shap_focus(text, features)
+    if negative_focus:
+        return negative_focus
+
+    if not _SHAP_IMPACT_PATTERN.search(text.lower()):
+        return None
+
+    feature = _best_matching_shap_feature(text, features)
+    compact_feature = _compact_shap_feature_for_focus(feature)
+    if not compact_feature:
+        return None
+
+    return {
+        "kind": "single_shap_feature",
+        "feature": compact_feature,
+        "instruction": (
+            "Gemini must write the final answer using this matched SHAP feature only. "
+            "Quote the exact label and dollar_impact, and do not invent or aggregate "
+            "other SHAP dollar amounts."
+        ),
+    }
 
 
 _AI_QUESTIONS_PROMPT = """You are a Singapore HDB (public housing) market analyst.
@@ -6720,7 +6980,10 @@ If the user asks to compare areas inside a town (for example "Tampines East vs T
 - Avoid jargon and technical terms. Write as if explaining to someone who doesn't follow the property market.
 - Only mention causes supported by the supplied data. NEVER use these vague filler phrases, regardless of context: "strong demand", "positive attributes", "favourable factors", "various factors", "market dynamics", "desirable location", "good location", "increasing values", "values have been increasing", "likely higher than before". If you would otherwise reach for these, name the specific feature from chart_data, my_flat, or shap_features that drives your point (for example, "remaining lease of 62 years", "9th floor", "476m to nearest MRT", "town_avg_price of $1.42M"). If no specific data supports the point, do not make the point.
 - Your first sentence MUST contain at least one specific number, dollar figure, percentage, or named feature from the supplied context (e.g. "$1.54M", "4.4%", "62 years", "Clementi Ave 3"). If you cannot ground the first sentence in a specific supplied value, say you do not have enough specific data to answer.
+- If chart_data includes `shap_answer_focus`, Gemini must write the final answer using that object as the primary source. For `kind: "lease_decay"`, quote total_dollar_impact as the total lease decay impact and list every component label with its dollar_impact. For `kind: "single_shap_feature"`, quote only the matched feature label and dollar_impact. For grouped focus kinds such as `negative_shap_features` or `schools_shap_features`, quote total_dollar_impact as the sum of the provided components and list every component label with its dollar_impact. Use signs cleanly: say "net impact is -$X" or "reducing by $X", never "reducing by -$X"; show positive net impacts with a plus sign, such as "+$716". Do not add SHAP dollar amounts outside shap_answer_focus.
 - If the user asks about the biggest factor, main driver, strongest impact, or what affects the price most, use chart_data.shap_features[0]. State its label and exact dollar_impact. Do not answer with market_shock unless the top SHAP feature itself is a market-shock feature. If shap_features is missing, say the factor breakdown is not available.
+- If the user asks about any specific SHAP feature or factor impact, quote only that feature's exact dollar_impact from chart_data.shap_features. If grouping multiple SHAP features, list each contributing label and dollar_impact and make the total equal the shown components. Never invent a SHAP dollar amount that is not directly present in chart_data.
+- If the user asks about lease decay, lease impact, or how much lease is reducing their flat's value, use only chart_data.lease_decay_breakdown: quote chart_data.lease_decay_breakdown.total_dollar_impact, list each feature in chart_data.lease_decay_breakdown.components with its label and dollar_impact, and never invent a lease impact number not derivable from lease_decay_breakdown. If lease_decay_breakdown is missing or has zero components, say so plainly instead of fabricating.
 - When explaining any SHAP feature, use that feature's `description` field if supplied so the wording matches the SHAP card.
 - If chart_data includes a `market_shock` object with severity not "stable", and the user asks about local market direction, upswing, cooling, or recent movement, you MUST: (1) quote the exact percentage from market_shock.summary, (2) explain it as the latest 1-month local $/sqm vs its 3-month rolling benchmark, (3) tie it to the user's predicted price by name, (4) note this is a recent local move, not a long-term trend. Do not paraphrase the percentage away.
 - When discussing reliability or model error, frame it as a data-driven estimate or second opinion, not a guaranteed valuation.
@@ -6888,19 +7151,15 @@ def api_ai_answer():
     surface = str(body.get("surface") or context.get("surface") or "analytics").strip().lower()
     filter_desc = _build_ai_filter_desc(context, surface)
     surface_desc = _build_ai_surface_desc(surface)
-    context_limit = 3200 if surface == "comparison" else 1500
+    context_limit = 3200 if surface == "comparison" else 4000
     chart_data = context.get("chart_data", {})
     my_flat = context.get("my_flat") or {}
 
-    if surface == "prediction" and _is_prediction_factor_question(question):
-        text = _build_prediction_factor_answer(chart_data, my_flat)
-        tier = session.get("subscription_tier", "general")
-        if tier != "premium":
-            _log_feature_view(_session_user_id(), "ai_answer")
-            remaining = max(0, GENERAL_DAILY_AI_ANSWER_LIMIT - used - 1)
-        else:
-            remaining = -1
-        return jsonify({"answer": text, "remaining": remaining})
+    if surface == "prediction" and isinstance(chart_data, dict):
+        shap_focus = _build_prediction_shap_focus(question, chart_data, my_flat)
+        if shap_focus:
+            chart_data = dict(chart_data)
+            chart_data["shap_answer_focus"] = shap_focus
 
     context_data = _serialize_ai_chart_data(chart_data, context_limit)
     my_flat_context = _format_my_flat_context(my_flat)
@@ -6957,7 +7216,10 @@ Rules:
 - PropSight is a transparent, data-driven second opinion for HDB homeowners. It does not replace agents, provide transactional advisory, or tell users to buy, sell, or hold.
 - Only mention causes supported by the supplied data. NEVER use these vague filler phrases, regardless of context: "strong demand", "positive attributes", "favourable factors", "various factors", "market dynamics", "desirable location", "good location", "increasing values", "values have been increasing", "likely higher than before". If you would otherwise reach for these, name the specific feature from chart_data, my_flat, or shap_features that drives your point (for example, "remaining lease of 62 years", "9th floor", "476m to nearest MRT", "town_avg_price of $1.42M"). If no specific data supports the point, do not make the point.
 - Your first sentence MUST contain at least one specific number, dollar figure, percentage, or named feature from the supplied context (for example, "$1.54M", "4.4%", "62 years", "Clementi Ave 3", "Improved model"). If you cannot ground the first sentence in a specific supplied value, say you do not have enough specific data to answer.
+- If chart_data includes `shap_answer_focus`, Gemini must write the final answer using that object as the primary source. For `kind: "lease_decay"`, quote total_dollar_impact as the total lease decay impact and list every component label with its dollar_impact. For `kind: "single_shap_feature"`, quote only the matched feature label and dollar_impact. For grouped focus kinds such as `negative_shap_features` or `schools_shap_features`, quote total_dollar_impact as the sum of the provided components and list every component label with its dollar_impact. Use signs cleanly: say "net impact is -$X" or "reducing by $X", never "reducing by -$X"; show positive net impacts with a plus sign, such as "+$716". Do not add SHAP dollar amounts outside shap_answer_focus.
 - If the user asks about the biggest factor, main driver, strongest impact, or what affects the price most, use chart_data.shap_features[0]. State its label and exact dollar_impact. Do not answer with market_shock unless the top SHAP feature itself is a market-shock feature. If shap_features is missing or empty, say the specific factor breakdown is not available and point them to the SHAP breakdown if available.
+- If the user asks about any specific SHAP feature or factor impact, quote only that feature's exact dollar_impact from chart_data.shap_features. If grouping multiple SHAP features, list each contributing label and dollar_impact and make the total equal the shown components. Never invent a SHAP dollar amount that is not directly present in chart_data.
+- If the user asks about lease decay, lease impact, or how much lease is reducing their flat's value, use only chart_data.lease_decay_breakdown: quote chart_data.lease_decay_breakdown.total_dollar_impact, list each feature in chart_data.lease_decay_breakdown.components with its label and dollar_impact, and never invent a lease impact number not derivable from lease_decay_breakdown. If lease_decay_breakdown is missing or has zero components, say so plainly instead of fabricating.
 - When explaining any SHAP feature, use that feature's `description` field if supplied so the wording matches the SHAP card explanation.
 - If chart_data includes a `market_shock` object and its severity is
   not "stable", and the user asks anything about the local market
@@ -7025,9 +7287,17 @@ def api_ai_chat():
     filter_desc = _build_ai_filter_desc(context, surface)
     surface_desc = _build_ai_surface_desc(surface, active_section)
 
-    context_limit = 3200 if surface == "comparison" else 1500
-    context_data = _serialize_ai_chart_data(context.get("chart_data", {}), context_limit)
-    my_flat_context = _format_my_flat_context(context.get("my_flat") or {})
+    context_limit = 3200 if surface == "comparison" else 4000
+    chart_data = context.get("chart_data", {})
+    my_flat = context.get("my_flat") or {}
+    if surface == "prediction" and isinstance(chart_data, dict):
+        shap_focus = _build_prediction_shap_focus(message, chart_data, my_flat)
+        if shap_focus:
+            chart_data = dict(chart_data)
+            chart_data["shap_answer_focus"] = shap_focus
+
+    context_data = _serialize_ai_chart_data(chart_data, context_limit)
+    my_flat_context = _format_my_flat_context(my_flat)
 
     system_text = _AI_CHAT_SYSTEM_PROMPT.format(
         surface_desc=surface_desc,

@@ -1617,6 +1617,9 @@ body > nav, body > footer, body > header {
   {% if explanation %},
   "narrative": {{ explanation.narrative | tojson }},
   "shap_features": {{ explanation.features | tojson }}
+  {% if explanation.lease_decay_breakdown %},
+  "lease_decay_breakdown": {{ explanation.lease_decay_breakdown | tojson }}
+  {% endif %}
   {% endif %}
 }
 </script>
@@ -2122,6 +2125,7 @@ if (pForm && subBtn) {
       mape: ctx.mape,
       narrative: ctx.narrative || null,
       shap_features: ctx.shap_features || [],
+      lease_decay_breakdown: ctx.lease_decay_breakdown || null,
       market_shock: ctx.market_shock || null,
     },
     my_flat: {
