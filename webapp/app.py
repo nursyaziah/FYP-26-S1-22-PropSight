@@ -7151,8 +7151,9 @@ def api_ai_answer():
         return jsonify({"error": "No question provided"}), 400
 
     surface = str(body.get("surface") or context.get("surface") or "analytics").strip().lower()
+    active_section = str(body.get("active_section") or context.get("active_section") or "").strip()
     filter_desc = _build_ai_filter_desc(context, surface)
-    surface_desc = _build_ai_surface_desc(surface)
+    surface_desc = _build_ai_surface_desc(surface, active_section)
     context_limit = 3200 if surface == "comparison" else 4000
     chart_data = context.get("chart_data", {})
     my_flat = context.get("my_flat") or {}
