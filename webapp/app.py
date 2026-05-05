@@ -7250,6 +7250,16 @@ FORMATTING: You may use lightweight markdown — short lists, **bold** for the o
 Do not output follow-up suggestions. The application generates those locally."""
 
 
+def _wrap_ai_user_question(text):
+    """Wrap user-controlled AI chat text in the untrusted-input prompt boundary."""
+    safe_text = (
+        str(text or "")
+        .replace("<user_question>", "&lt;user_question&gt;")
+        .replace("</user_question>", "&lt;/user_question&gt;")
+    )
+    return f"<user_question>\n{safe_text}\n</user_question>"
+
+
 @app.route("/api/ai_chat", methods=["POST"])
 @api_login_required
 def api_ai_chat():
@@ -7311,13 +7321,13 @@ def api_ai_chat():
 
     if not clean_history:
         # First message: system prompt + user question
-        first_parts = [{"text": system_text + "\n\n<user_question>\n" + message + "\n</user_question>"}]
+        first_parts = [{"text": system_text + "\n\n" + _wrap_ai_user_question(message)}]
         contents.append({"role": "user", "parts": first_parts})
     else:
         # Rebuild the full conversation; the first user turn carries the system prompt.
         first = clean_history[0]
         if first["role"] == "user":
-            first_parts = [{"text": system_text + "\n\n<user_question>\n" + first["text"] + "\n</user_question>"}]
+            first_parts = [{"text": system_text + "\n\n" + _wrap_ai_user_question(first["text"])}]
             contents.append({"role": "user", "parts": first_parts})
             remaining_history = clean_history[1:]
         else:
@@ -7325,10 +7335,11 @@ def api_ai_chat():
             remaining_history = clean_history
 
         for h in remaining_history:
-            contents.append({"role": h["role"], "parts": [{"text": h["text"]}]})
+            text = _wrap_ai_user_question(h["text"]) if h["role"] == "user" else h["text"]
+            contents.append({"role": h["role"], "parts": [{"text": text}]})
 
         # Add current message
-        contents.append({"role": "user", "parts": [{"text": f"<user_question>\n{message}\n</user_question>"}]})
+        contents.append({"role": "user", "parts": [{"text": _wrap_ai_user_question(message)}]})
 
     temp = 0.15 if surface == "prediction" else 0.3
     text = _call_gemini_chat(contents, max_tokens=768, temperature=temp)
