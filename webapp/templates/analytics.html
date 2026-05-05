@@ -4509,6 +4509,7 @@ if (IS_PREMIUM) {
     let chatHistory = [];
     let chatBusy    = false;
     let isExpanded  = false;
+    let preferencePillsShown = false;
     const chatStorageKey = 'propsight:analytics:aiChat:v1:' + {{ g.user.get('id')|tojson }};
 
     const chatWidget   = document.getElementById('aiChatWidget');
@@ -4645,6 +4646,37 @@ if (IS_PREMIUM) {
         return bubble;
     }
 
+    function maybeShowPreferencePills() {
+        if (preferencePillsShown || !chatMessages) return;
+        preferencePillsShown = true;
+        const wrap = document.createElement('div');
+        wrap.id = 'analyticsAiPreferenceRow';
+        wrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;align-items:flex-start;padding:6px 0 10px;';
+        wrap.innerHTML = ''
+            + '<div style="font-size:12px;color:#6b7280;padding-left:2px;">How would you like my replies?</div>'
+            + '<div style="display:flex;flex-wrap:wrap;gap:6px;">'
+            +   '<button type="button" class="ai-chat-suggestion" data-pref="more">More detailed</button>'
+            +   '<button type="button" class="ai-chat-suggestion" data-pref="bullets">Use bullet points</button>'
+            +   '<button type="button" class="ai-chat-suggestion" data-pref="dismiss">Looks good</button>'
+            + '</div>';
+        wrap.addEventListener('click', e => {
+            const btn = e.target.closest('[data-pref]');
+            if (!btn || chatBusy) return;
+            e.stopPropagation();
+            const kind = btn.getAttribute('data-pref');
+            wrap.remove();
+            if (kind === 'more') {
+                chatInput.value = 'From now on, please give me more detail in your replies.';
+                sendChatMessage();
+            } else if (kind === 'bullets') {
+                chatInput.value = 'From now on, please format your replies as short bullet points.';
+                sendChatMessage();
+            }
+        });
+        chatMessages.appendChild(wrap);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
     function isLikelyIncompleteAiReply(reply) {
         const text = String(reply || '').trim();
         if (text.length < 24) return false;
@@ -4699,6 +4731,8 @@ if (IS_PREMIUM) {
         chatBusy = true;
         chatInput.value = '';
         chatSendBtn.disabled = true;
+        const existingPrefRow = document.getElementById('analyticsAiPreferenceRow');
+        if (existingPrefRow) existingPrefRow.remove();
         appendBubble(text, 'user');
         if (isPredictionQuestion(text)) {
             appendBubble(buildAnalyticsPredictRedirect(), 'bot');
@@ -4763,11 +4797,15 @@ if (IS_PREMIUM) {
                     renderSuggestions(buildChatStarters());
                 } else {
                     const linkedReply = withAnalyticsResourceLinks(text, reply);
+                    const wasEmptyBeforePush = chatHistory.length === 0;
                     chatHistory.push({ role: 'user', text });
                     chatHistory.push({ role: 'model', text: reply });
                     saveStoredChatHistory();
                     appendBubble(linkedReply || 'No response received.', 'bot', Boolean(reply));
                     renderSuggestions(buildChatStarters());
+                    if (reply && wasEmptyBeforePush) {
+                        maybeShowPreferencePills();
+                    }
                 }
             }
         } catch (e) {

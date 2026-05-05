@@ -2109,6 +2109,7 @@ if (pForm && subBtn) {
   }
 
   var hist   = [];  /* premium multi-turn history */
+  var preferencePillsShown = false;
 
   var apiCtx = {
     surface: 'prediction',
@@ -2266,6 +2267,8 @@ if (pForm && subBtn) {
 
     var initPills = document.getElementById('initialSuggestions');
     if (initPills) initPills.style.display = 'none';
+    var existingPrefRow = document.getElementById('pqPreferenceRow');
+    if (existingPrefRow) existingPrefRow.remove();
 
     appendBubble('user', q);
 
@@ -2316,6 +2319,7 @@ if (pForm && subBtn) {
       var ans = (data.answer || data.reply || data.response || '').trim();
       var displayAns = withPredictionResourceLinks(q, ans);
 
+      var wasEmptyBeforePush = hist.length === 0;
       if (isPrem && ans) {
         hist.push({ role: 'user',  text: q });
         hist.push({ role: 'model', text: ans });
@@ -2323,6 +2327,9 @@ if (pForm && subBtn) {
 
       appendBubble('ai', displayAns || 'No response received.', false, false, Boolean(ans));
       appendFollowUps();
+      if (isPrem && ans && wasEmptyBeforePush) {
+        maybeShowPreferencePills();
+      }
 
       if (!isPrem && data.remaining != null && limitEl) {
         var rem = Number(data.remaining);
@@ -2403,6 +2410,34 @@ if (pForm && subBtn) {
       row.appendChild(btn);
     });
     wrap.appendChild(row);
+    thread.appendChild(wrap);
+    thread.scrollTop = thread.scrollHeight;
+  }
+
+  function maybeShowPreferencePills() {
+    if (!isPrem || preferencePillsShown || !thread) return;
+    preferencePillsShown = true;
+    var wrap = document.createElement('div');
+    wrap.id = 'pqPreferenceRow';
+    wrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;align-items:flex-start;padding:6px 0 10px;';
+    wrap.innerHTML = ''
+      + '<div style="font-size:12px;color:#6b7280;padding-left:2px;">How would you like my replies?</div>'
+      + '<div style="display:flex;flex-wrap:wrap;gap:6px;">'
+      +   '<button type="button" class="fu-pill" data-pref="more">More detailed</button>'
+      +   '<button type="button" class="fu-pill" data-pref="bullets">Use bullet points</button>'
+      +   '<button type="button" class="fu-pill" data-pref="dismiss">Looks good</button>'
+      + '</div>';
+    wrap.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-pref]');
+      if (!btn || busy) return;
+      var kind = btn.getAttribute('data-pref');
+      wrap.remove();
+      if (kind === 'more') {
+        window.sendPQ('From now on, please give me more detail in your replies.');
+      } else if (kind === 'bullets') {
+        window.sendPQ('From now on, please format your replies as short bullet points.');
+      }
+    });
     thread.appendChild(wrap);
     thread.scrollTop = thread.scrollHeight;
   }

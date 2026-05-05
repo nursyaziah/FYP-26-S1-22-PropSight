@@ -1687,6 +1687,7 @@ var comparisonAiSuggestions = document.getElementById('comparisonAiSuggestions')
 var comparisonAiLimitNote = document.getElementById('comparisonAiLimitNote');
 var comparisonAiStorageKey = 'propsight:comparison:aiChat:v1:' + {{ g.user.get('id')|tojson }};
 var AI_GENERATED_DISCLAIMER_TEXT = 'AI-generated explanation based on the comparison data. May contain errors.';
+var comparisonAiPreferenceShown = false;
 
 function escapeComparisonText(s) {
     return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -1917,6 +1918,34 @@ function renderComparisonStarters() {
     }).join('');
 }
 
+function maybeShowComparisonAiPreferences() {
+    if (!IS_PREMIUM || comparisonAiPreferenceShown || !comparisonAiThread) return;
+    comparisonAiPreferenceShown = true;
+    var wrap = document.createElement('div');
+    wrap.id = 'comparisonAiPreferenceRow';
+    wrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;align-items:flex-start;padding:6px 0 10px;';
+    wrap.innerHTML = ''
+        + '<div style="font-size:12px;color:#6b7280;padding-left:2px;">How would you like my replies?</div>'
+        + '<div style="display:flex;flex-wrap:wrap;gap:6px;">'
+        +   '<button type="button" class="suggest-pill" data-pref="more">More detailed</button>'
+        +   '<button type="button" class="suggest-pill" data-pref="bullets">Use bullet points</button>'
+        +   '<button type="button" class="suggest-pill" data-pref="dismiss">Looks good</button>'
+        + '</div>';
+    wrap.addEventListener('click', function(e) {
+        var btn = e.target.closest('[data-pref]');
+        if (!btn || comparisonAiBusy) return;
+        var kind = btn.getAttribute('data-pref');
+        wrap.remove();
+        if (kind === 'more') {
+            window.sendComparisonAI('From now on, please give me more detail in your replies.');
+        } else if (kind === 'bullets') {
+            window.sendComparisonAI('From now on, please format your replies as short bullet points.');
+        }
+    });
+    comparisonAiThread.appendChild(wrap);
+    comparisonAiThread.scrollTop = comparisonAiThread.scrollHeight;
+}
+
 function isLikelyIncompleteComparisonReply(reply) {
     var text = String(reply || '').trim();
     if (text.length < 24) return false;
@@ -1934,6 +1963,8 @@ window.sendComparisonAI = async function(text) {
     comparisonAiInput.value = '';
     comparisonAiSend.disabled = true;
     if (comparisonAiSuggestions) comparisonAiSuggestions.style.display = 'none';
+    var existingPrefRow = document.getElementById('comparisonAiPreferenceRow');
+    if (existingPrefRow) existingPrefRow.remove();
 
     appendComparisonBubble('user', q);
 
@@ -2001,12 +2032,16 @@ window.sendComparisonAI = async function(text) {
         if (isLikelyIncompleteComparisonReply(answer)) {
             appendComparisonBubble('ai', 'The AI response was cut off before it finished. Please try that question again in a moment.', true);
         } else {
+            var wasEmptyBeforePush = comparisonAiHistory.length === 0;
             if (IS_PREMIUM && answer) {
                 comparisonAiHistory.push({ role: 'user', text: q });
                 comparisonAiHistory.push({ role: 'model', text: answer });
                 saveStoredComparisonAiHistory();
             }
             appendComparisonBubble('ai', answer || 'No response received.', false, false, Boolean(answer));
+            if (IS_PREMIUM && answer && wasEmptyBeforePush) {
+                maybeShowComparisonAiPreferences();
+            }
         }
 
         if (!IS_PREMIUM && data.remaining != null && comparisonAiLimitNote) {
