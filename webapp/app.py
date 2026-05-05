@@ -6936,7 +6936,9 @@ For each property, write a 1-2 sentence plain-language explanation of "why that 
 Connect the factors to the predicted price — explain how each factor pushes the price up or down.
 Avoid jargon. Write as if explaining to someone unfamiliar with property markets.
 If the user asks for best value, best location, or which factor to prioritise, answer as an objective criteria-based comparison using the supplied metrics. Do not turn that into buy, sell, or hold advice.
-Only mention causes supported by the property summaries and factors above. Do not invent market events or policy reasons.
+Only mention causes supported by the property summaries and factors above. NEVER use these vague filler phrases, regardless of context: "strong demand", "positive attributes", "favourable factors", "various factors", "market dynamics", "desirable location", "good location", "increasing values", "values have been increasing", "likely higher than before". If you would otherwise reach for these, name the specific feature from the property summaries, micro factors, or macro factors that drives your point (for example, "remaining lease of 62 years", "9th floor", "476m to nearest MRT", "predicted $1.42M"). If no specific data supports the point, do not make the point.
+Each panel's why_price first sentence MUST contain at least one specific number, dollar figure, percentage, or named feature from the supplied property summaries or factors (for example, "$1.42M", "62 years", "Clementi Ave 3", "Improved model"). If you cannot ground the first sentence in a specific supplied value, say there is not enough specific data to explain the price.
+Do not invent market events or policy reasons.
 
 Return ONLY valid JSON:
 {{"panels": [{{"label": "A", "why_price": "explanation..."}}, ...]}}"""
