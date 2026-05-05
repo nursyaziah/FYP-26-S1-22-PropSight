@@ -563,6 +563,35 @@ body.propsight-app {
   padding: 16px 18px 6px;
   border-bottom: 1px solid #f8fafc;
 }
+.comparison-key-tradeoff {
+  margin: 14px 18px 4px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(99, 102, 241, 0.08));
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 0.92rem;
+  color: #0f172a;
+}
+.comparison-key-tradeoff .bi {
+  color: #2563eb;
+  font-size: 1.05rem;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+.comparison-key-tradeoff-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #2563eb;
+  margin-bottom: 3px;
+}
+.comparison-key-tradeoff-text { line-height: 1.4; }
+.comparison-key-tradeoff.is-loading { opacity: 0.7; }
 .comparison-ai-factor-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1065,6 +1094,16 @@ body.propsight-app {
                     <p class="text-muted small mb-2">No significant macro differences found.</p>
                     {% endif %}
                 </div>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if is_premium %}
+        <div class="comparison-key-tradeoff" id="comparisonKeyTradeoff" hidden>
+            <i class="bi bi-lightbulb-fill"></i>
+            <div>
+                <span class="comparison-key-tradeoff-label">Key Trade-off</span>
+                <div class="comparison-key-tradeoff-text" id="comparisonKeyTradeoffText"></div>
             </div>
         </div>
         {% endif %}
@@ -2071,5 +2110,41 @@ if (HAS_RESULTS && comparisonAiSuggestions && !comparisonAiHistory.length) {
         btn.classList.add('used');
     });
 }
+
+function renderKeyTradeoff(text) {
+    var box = document.getElementById('comparisonKeyTradeoff');
+    var slot = document.getElementById('comparisonKeyTradeoffText');
+    if (!box || !slot) return;
+    var clean = String(text || '').trim();
+    if (!clean) { box.hidden = true; return; }
+    slot.innerHTML = renderComparisonAiMarkdown(clean);
+    box.classList.remove('is-loading');
+    box.hidden = false;
+}
+
+function loadComparisonKeyTradeoff() {
+    if (!IS_PREMIUM || !HAS_RESULTS) return;
+    if (!Array.isArray(PAYLOADS) || PAYLOADS.length < 2) return;
+    var box = document.getElementById('comparisonKeyTradeoff');
+    var slot = document.getElementById('comparisonKeyTradeoffText');
+    if (!box || !slot) return;
+    box.classList.add('is-loading');
+    box.hidden = false;
+    slot.textContent = 'Looking for the non-obvious trade-off…';
+    fetch('/api/comparison_ai_analysis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payloads: PAYLOADS })
+    }).then(function(r) {
+        if (!r.ok) throw new Error('http ' + r.status);
+        return r.json();
+    }).then(function(data) {
+        renderKeyTradeoff(data && data.key_tradeoff);
+    }).catch(function() {
+        box.hidden = true;
+    });
+}
+
+loadComparisonKeyTradeoff();
 </script>
 {% endblock %}

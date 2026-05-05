@@ -2115,10 +2115,25 @@ function isAreaLocationQuestion(q) {
     return /\b(which|what)\s+(area|street|town|estate|zone|neighbou?rhood)\b.*\b(stronger|better|best|location|amenit|transport|mrt|demand)\b|\b(stronger|better|best)\s+location\b.*\b(area|street|town|estate|zone|neighbou?rhood)\b/i.test(text);
 }
 
+function appendAnalyticsWantToGoDeeper(base, suggestion) {
+    if (!IS_PREMIUM) return base;
+    const history = (typeof chatHistory !== 'undefined' && Array.isArray(chatHistory)) ? chatHistory : [];
+    if (history.length < 2) return base;
+    const last = history[history.length - 1];
+    if (last && last.role === 'model' && /\*\*Want to go deeper\?\*\*/i.test(String(last.text || ''))) {
+        return base;
+    }
+    return base + '\n\n**Want to go deeper?** ' + suggestion;
+}
+
 function buildAnalyticsComparisonRedirect() {
-    return 'That is a property-by-property comparison question. Analytics explains market trends; use the [Comparison page](' +
+    const base = 'That is a property-by-property comparison question. Analytics explains market trends; use the [Comparison page](' +
         buildAnalyticsComparisonLink() +
         ') to compare flats side by side for best value, location, lease, and the factor you want to prioritise.';
+    return appendAnalyticsWantToGoDeeper(
+        base,
+        'Want a single-flat estimate for this town first so you have something concrete to compare against?'
+    );
 }
 
 function buildAnalyticsPredictLink() {
@@ -2147,17 +2162,25 @@ function isPredictionQuestion(q) {
 }
 
 function buildAnalyticsPredictRedirect() {
-    return 'That is a single-flat prediction question. Analytics explains market trends; use the [Predict page](' +
+    const base = 'That is a single-flat prediction question. Analytics explains market trends; use the [Predict page](' +
         buildAnalyticsPredictLink() +
         ') to generate or inspect the estimated value for one HDB flat.';
+    return appendAnalyticsWantToGoDeeper(
+        base,
+        'Want to see how recent transaction volume in this town signals demand for that flat type?'
+    );
 }
 
 function buildAnalyticsAreaRedirect() {
-    return 'That is an area-comparison question. Use [Area Comparison](' +
+    const base = 'That is an area-comparison question. Use [Area Comparison](' +
         buildAnalyticsSectionLink('area', 'town_area') +
         ') to compare streets or areas within the selected town, or [District Comparison](' +
         buildAnalyticsSectionLink('district') +
         ') for town-level context.';
+    return appendAnalyticsWantToGoDeeper(
+        base,
+        'Want to compare two specific flats side by side once you have shortlisted areas?'
+    );
 }
 
 function buildMyFlatContext() {
@@ -4417,9 +4440,29 @@ async function loadAiFaqQuestions() {
     if (!IS_PREMIUM) return;
     const cacheKey = getAiFaqCacheKey();
     if (aiFaqQuestionsCache[cacheKey]) { renderAiFaqFromGroups(aiFaqQuestionsCache[cacheKey]); return; }
-    const groups = buildSuggestedQuestionGroups();
-    aiFaqQuestionsCache[cacheKey] = groups;
-    renderAiFaqFromGroups(groups);
+    const fallbackGroups = buildSuggestedQuestionGroups();
+    aiFaqQuestionsCache[cacheKey] = fallbackGroups;
+    renderAiFaqFromGroups(fallbackGroups);
+    try {
+        const response = await fetch('/api/ai_questions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                filters: getFilters(),
+                chart_data: collectChartDataSummary(),
+            }),
+        });
+        if (!response.ok) throw new Error('http ' + response.status);
+        const data = await response.json();
+        const groups = data && data.groups;
+        const hasGroups = groups && ['value', 'demand', 'position', 'lease'].some(key => Array.isArray(groups[key]) && groups[key].length);
+        if (hasGroups) {
+            aiFaqQuestionsCache[cacheKey] = groups;
+            renderAiFaqFromGroups(groups);
+        }
+    } catch (err) {
+        aiFaqQuestionsCache[cacheKey] = fallbackGroups;
+    }
 }
 
 function debouncedLoadAiFaq() {

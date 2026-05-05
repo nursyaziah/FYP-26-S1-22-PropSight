@@ -1604,6 +1604,12 @@ body > nav, body > footer, body > header {
   "storey_range": {{ form_data.storey_range | tojson }},
   "remaining_lease": {{ remaining_lease | tojson }},
   "flat_age": {{ flat_age | tojson }},
+  "storey_midpoint": {{ prediction_payload.get('storey_midpoint') | tojson if prediction_payload else 'null' }},
+  "price_per_sqm": {{ prediction_payload.get('price_per_sqm') | tojson if prediction_payload else 'null' }},
+  "dist_mrt": {{ prediction_payload.get('dist_mrt') | tojson if prediction_payload else 'null' }},
+  "dist_school": {{ prediction_payload.get('dist_school') | tojson if prediction_payload else 'null' }},
+  "dist_cbd": {{ prediction_payload.get('dist_cbd') | tojson if prediction_payload else 'null' }},
+  "is_mature_estate": {{ prediction_payload.get('is_mature') | tojson if prediction_payload else 'null' }},
   "town_avg_price": {{ town_avg_price | tojson }},
   "town": {{ form_data.town | tojson }},
   "flat_type": {{ form_data.flat_type | tojson }},
@@ -2122,6 +2128,12 @@ if (pForm && subBtn) {
       storey_range: ctx.storey_range,
       remaining_lease: ctx.remaining_lease,
       flat_age: ctx.flat_age,
+      storey_midpoint: ctx.storey_midpoint,
+      price_per_sqm: ctx.price_per_sqm,
+      dist_mrt: ctx.dist_mrt,
+      dist_school: ctx.dist_school,
+      dist_cbd: ctx.dist_cbd,
+      is_mature_estate: ctx.is_mature_estate,
       town_avg_price: ctx.town_avg_price,
       mape: ctx.mape,
       narrative: ctx.narrative || null,
@@ -2135,6 +2147,14 @@ if (pForm && subBtn) {
       flat_model: ctx.flat_model || '',
       floor_area: ctx.floor_area,
       storey_range: ctx.storey_range || '',
+      remaining_lease: ctx.remaining_lease,
+      flat_age: ctx.flat_age,
+      storey_midpoint: ctx.storey_midpoint,
+      price_per_sqm: ctx.price_per_sqm,
+      dist_mrt: ctx.dist_mrt,
+      dist_school: ctx.dist_school,
+      dist_cbd: ctx.dist_cbd,
+      is_mature_estate: ctx.is_mature_estate,
       lease_commence: ctx.lease_commence,
       street_name: ctx.street_name || '',
       block: ctx.block || '',
@@ -2152,16 +2172,34 @@ if (pForm && subBtn) {
     return /analytics|market\s+(trend|context|movement|demand)|price\s+trend|historical|history|transaction\s+(volume|activity|count)|sales\s+(volume|activity)|district\s+comparison|area\s+comparison|town\s+(average|benchmark|comparison|ranking)|nearby\s+town|other\s+town|flat\s+type\s+(mix|distribution|demand|breakdown)|lease\s+decay\s+(chart|analysis)|forecast\s+(chart|table)|5[-\s]?year\s+(forecast|projection)|comparable\s+(sales|transactions)|recent\s+similar\s+transactions|\b(which|what)\s+(area|street|town|estate|zone|neighbou?rhood)\b.*\b(stronger|better|best|location|amenit|transport|mrt|demand)\b|\b(stronger|better|best)\s+location\b.*\b(area|street|town|estate|zone|neighbou?rhood)\b/i.test(text);
   }
 
+  function appendWantToGoDeeper(base, suggestion) {
+    if (!isPrem) return base;
+    if (!Array.isArray(hist) || hist.length < 2) return base;
+    var last = hist[hist.length - 1];
+    if (last && last.role === 'model' && /\*\*Want to go deeper\?\*\*/i.test(String(last.text || ''))) {
+      return base;
+    }
+    return base + '\n\n**Want to go deeper?** ' + suggestion;
+  }
+
   function buildPredictionComparisonRedirect() {
-    return 'That is a property-comparison question. Predict explains this single estimate; use the [Comparison page](' +
+    var base = 'That is a property-comparison question. Predict explains this single estimate; use the [Comparison page](' +
       buildPredictionComparisonLink() +
       ') to compare flats side by side for best value, location, lease, and the factor you want to prioritise.';
+    return appendWantToGoDeeper(
+      base,
+      'Want to see the historical price trend and demand for this town on the Analytics page?'
+    );
   }
 
   function buildPredictionAnalyticsRedirect(q) {
-    return 'That is a market analytics question. Predict explains this single estimate; use the [Analytics page](' +
+    var base = 'That is a market analytics question. Predict explains this single estimate; use the [Analytics page](' +
       buildPredictionAnalyticsLink(pickAnalyticsFocus(q)) +
       ') for price trends, lease decay, district or area context, transaction volume, and historical movement.';
+    return appendWantToGoDeeper(
+      base,
+      'Want to compare this flat against another to see which offers better value per lease year?'
+    );
   }
 
   // Generate dynamic suggestion pills based on SHAP and context
