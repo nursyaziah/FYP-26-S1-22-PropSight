@@ -5105,6 +5105,9 @@ def api_comparison_ai_analysis():
             return jsonify({"error": "Could not parse AI response"}), 500
 
     # Attach the ranked factors to the response
+    for panel in result.get("panels", []):
+        if isinstance(panel, dict) and panel.get("why_price"):
+            panel["why_price"] = _polish_ai_homeowner_text(panel["why_price"])
     result["micro"] = ranking.get("micro", [])
     result["macro"] = ranking.get("macro", [])
 
@@ -6952,6 +6955,7 @@ Macro factors (market-level):
 For each property, write a 1-2 sentence plain-language explanation of "why that price?" using ONLY the factors above.
 Connect the factors to the predicted price — explain how each factor pushes the price up or down.
 Avoid jargon. Write as if explaining to someone unfamiliar with property markets.
+Use neutral homeowner wording. Avoid salesy adjectives like "generous", "attractive", or "strong recent". Prefer "larger floor area" over "generous floor area" and "recent comparable sales" over "market price performance".
 If the user asks for best value, best location, or which factor to prioritise, answer as an objective criteria-based comparison using the supplied metrics. Do not turn that into buy, sell, or hold advice.
 Only mention causes supported by the property summaries and factors above. NEVER use these vague filler phrases, regardless of context: "strong demand", "positive attributes", "favourable factors", "various factors", "market dynamics", "desirable location", "good location", "increasing values", "values have been increasing", "likely higher than before". If you would otherwise reach for these, name the specific feature from the property summaries, micro factors, or macro factors that drives your point (for example, "remaining lease of 62 years", "9th floor", "476m to nearest MRT", "predicted $1.42M"). If no specific data supports the point, do not make the point.
 Each panel's why_price first sentence MUST contain at least one specific number, dollar figure, percentage, or named feature from the supplied property summaries or factors (for example, "$1.42M", "62 years", "Clementi Ave 3", "Improved model"). If you cannot ground the first sentence in a specific supplied value, say there is not enough specific data to explain the price.
@@ -6959,6 +6963,29 @@ Do not invent market events or policy reasons.
 
 Return ONLY valid JSON:
 {{"panels": [{{"label": "A", "why_price": "explanation..."}}, ...]}}"""
+
+
+_AI_HOMEOWNER_TEXT_REPLACEMENTS = (
+    (re.compile(r"\bgenerous floor area\b", re.IGNORECASE), "larger floor area"),
+    (re.compile(r"\bgenerous size\b", re.IGNORECASE), "larger size"),
+    (re.compile(r"\bstrong recent sales prices\b", re.IGNORECASE), "higher recent comparable sale prices"),
+    (re.compile(r"\bstrong recent sales\b", re.IGNORECASE), "higher recent comparable sales"),
+    (re.compile(r"\brecent market price performance\b", re.IGNORECASE), "recent comparable sales"),
+    (re.compile(r"\bmarket price performance\b", re.IGNORECASE), "recent comparable sales"),
+)
+
+
+def _polish_ai_homeowner_text(text):
+    """Apply deterministic wording fixes so AI copy stays neutral and homeowner-friendly."""
+    polished = str(text or "")
+    for pattern, replacement in _AI_HOMEOWNER_TEXT_REPLACEMENTS:
+        polished = pattern.sub(replacement, polished)
+    return re.sub(
+        r"(?<!factor breakdown \()\bSHAP Breakdown\b",
+        "factor breakdown (SHAP Breakdown)",
+        polished,
+        flags=re.IGNORECASE,
+    )
 
 _AI_ANSWER_PROMPT = """You are a Singapore HDB (public housing) market analyst.
 The user is viewing {surface_desc}: {filter_desc}
@@ -6998,6 +7025,9 @@ Where relevant, point users to PropSight features for deeper exploration: the Le
 If the user asks to compare areas inside a town (for example "Tampines East vs Tampines West"), explain that the current dashboard compares streets as the available within-town area unit.
 
 - Avoid jargon and technical terms. Write as if explaining to someone who doesn't follow the property market.
+- Use neutral homeowner wording. Avoid salesy adjectives like "generous", "attractive", or "strong recent". Prefer "larger floor area" over "generous floor area" and "recent comparable sales" over "market price performance".
+- When using technical metrics such as price per sqm, benchmark, SHAP, market shock, or model-year adjustment, immediately translate the metric into plain homeowner meaning. Do not leave the metric unexplained.
+- For "why is my flat priced this way?" questions, use this structure: estimated price, top 1-2 drivers with exact numbers, plain homeowner meaning, and where to inspect it in PropSight.
 - Only mention causes supported by the supplied data. NEVER use these vague filler phrases, regardless of context: "strong demand", "positive attributes", "favourable factors", "various factors", "market dynamics", "desirable location", "good location", "increasing values", "values have been increasing", "likely higher than before". If you would otherwise reach for these, name the specific feature from chart_data, my_flat, or shap_features that drives your point (for example, "remaining lease of 62 years", "9th floor", "476m to nearest MRT", "town_avg_price of $1.42M"). If no specific data supports the point, do not make the point.
 - Your first sentence MUST contain at least one specific number, dollar figure, percentage, or named feature from the supplied context (e.g. "$1.54M", "4.4%", "62 years", "Clementi Ave 3"). If you cannot ground the first sentence in a specific supplied value, say you do not have enough specific data to answer.
 - If chart_data includes `shap_answer_focus`, Gemini must write the final answer using that object as the primary source. For `kind: "lease_decay"`, quote total_dollar_impact as the total lease decay impact and list every component label with its dollar_impact. For `kind: "single_shap_feature"`, quote only the matched feature label and dollar_impact. For grouped focus kinds such as `negative_shap_features` or `schools_shap_features`, quote total_dollar_impact as the sum of the provided components and list every component label with its dollar_impact. Use signs cleanly: say "net impact is -$X" or "reducing by $X", never "reducing by -$X"; show positive net impacts with a plus sign, such as "+$716". Do not add SHAP dollar amounts outside shap_answer_focus.
@@ -7216,7 +7246,7 @@ def api_ai_answer():
     else:
         remaining = -1
 
-    return jsonify({"answer": text.strip(), "remaining": remaining})
+    return jsonify({"answer": _polish_ai_homeowner_text(text.strip()), "remaining": remaining})
 
 
 
@@ -7247,6 +7277,9 @@ Rules:
 - On the comparison page, route single-flat estimate questions to the Predict page and broad market trend questions to the Analytics page; Comparison explains side-by-side tradeoffs.
 - PropSight is a transparent, data-driven second opinion for HDB homeowners. It does not replace agents, provide transactional advisory, or tell users to buy, sell, or hold.
 - Only mention causes supported by the supplied data. NEVER use these vague filler phrases, regardless of context: "strong demand", "positive attributes", "favourable factors", "various factors", "market dynamics", "desirable location", "good location", "increasing values", "values have been increasing", "likely higher than before". If you would otherwise reach for these, name the specific feature from chart_data, my_flat, or shap_features that drives your point (for example, "remaining lease of 62 years", "9th floor", "476m to nearest MRT", "town_avg_price of $1.42M"). If no specific data supports the point, do not make the point.
+- Use neutral homeowner wording. Avoid salesy adjectives like "generous", "attractive", or "strong recent". Prefer "larger floor area" over "generous floor area" and "recent comparable sales" over "market price performance".
+- When using technical metrics such as price per sqm, benchmark, SHAP, market shock, or model-year adjustment, immediately translate the metric into plain homeowner meaning. Do not leave the metric unexplained.
+- For "why is my flat priced this way?" questions, use this structure: estimated price, top 1-2 drivers with exact numbers, plain homeowner meaning, and where to inspect it in PropSight.
 - Your first sentence MUST contain at least one specific number, dollar figure, percentage, or named feature from the supplied context (for example, "$1.54M", "4.4%", "62 years", "Clementi Ave 3", "Improved model"). If you cannot ground the first sentence in a specific supplied value, say you do not have enough specific data to answer.
 - If chart_data includes `shap_answer_focus`, Gemini must write the final answer using that object as the primary source. For `kind: "lease_decay"`, quote total_dollar_impact as the total lease decay impact and list every component label with its dollar_impact. For `kind: "single_shap_feature"`, quote only the matched feature label and dollar_impact. For grouped focus kinds such as `negative_shap_features` or `schools_shap_features`, quote total_dollar_impact as the sum of the provided components and list every component label with its dollar_impact. Use signs cleanly: say "net impact is -$X" or "reducing by $X", never "reducing by -$X"; show positive net impacts with a plus sign, such as "+$716". Do not add SHAP dollar amounts outside shap_answer_focus.
 - If the user asks about the biggest factor, main driver, strongest impact, or what affects the price most, use chart_data.shap_features[0]. State its label and exact dollar_impact. Do not answer with market_shock unless the top SHAP feature itself is a market-shock feature. If shap_features is missing or empty, say the specific factor breakdown is not available and point them to the SHAP breakdown if available.
@@ -7387,7 +7420,7 @@ def api_ai_chat():
     if not text:
         return jsonify({"error": "AI temporarily unavailable"}), 503
 
-    reply = text.strip()
+    reply = _polish_ai_homeowner_text(text.strip())
 
     _log_feature_view(_session_user_id(), "ai_chat")
 
