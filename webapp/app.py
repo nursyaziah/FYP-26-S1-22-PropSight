@@ -341,7 +341,12 @@ GEMINI_FALLBACK_MODEL = "gemini-2.5-flash-lite"
 GEMINI_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 GEMINI_FALLBACK_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_FALLBACK_MODEL}:generateContent"
 GENERAL_DAILY_AI_ANSWER_LIMIT = 3
+AI_ANSWER_MAX_TOKENS = 256
 AI_CHAT_HISTORY_MESSAGE_LIMIT = 20
+AI_CHAT_HISTORY_TURN_CHAR_LIMIT = 2000
+AI_CHAT_HISTORY_TRUNCATION_SUFFIX = "…[truncated]"
+AI_USER_QUESTION_OPEN_TAG = "<user_question>"
+AI_USER_QUESTION_CLOSE_TAG = "</user_question>"
 
 
 def _env_int(name, default):
@@ -5103,6 +5108,7 @@ def api_comparison_ai_analysis():
     result["micro"] = ranking.get("micro", [])
     result["macro"] = ranking.get("macro", [])
 
+    # Intentionally separate from "ai_answer"; initial comparison analysis is not daily-capped.
     _log_feature_view(_session_user_id(), "comparison_ai_analysis")
 
     return jsonify(result)
@@ -7196,7 +7202,7 @@ def api_ai_answer():
     )
 
     temp = 0.2 if surface == "prediction" else 0.3
-    text = _call_gemini(prompt, max_tokens=512, temperature=temp)
+    text = _call_gemini(prompt, max_tokens=AI_ANSWER_MAX_TOKENS, temperature=temp)
     if not text:
         return jsonify({"error": "AI temporarily unavailable"}), 503
 
@@ -7278,10 +7284,18 @@ def _wrap_ai_user_question(text):
     """Wrap user-controlled AI chat text in the untrusted-input prompt boundary."""
     safe_text = (
         str(text or "")
-        .replace("<user_question>", "&lt;user_question&gt;")
-        .replace("</user_question>", "&lt;/user_question&gt;")
+        .replace(AI_USER_QUESTION_OPEN_TAG, "&lt;user_question&gt;")
+        .replace(AI_USER_QUESTION_CLOSE_TAG, "&lt;/user_question&gt;")
     )
-    return f"<user_question>\n{safe_text}\n</user_question>"
+    return f"{AI_USER_QUESTION_OPEN_TAG}\n{safe_text}\n{AI_USER_QUESTION_CLOSE_TAG}"
+
+
+def _truncate_ai_chat_history_turn(text):
+    """Limit stored chat history while making truncation visible to the model."""
+    if len(text) <= AI_CHAT_HISTORY_TURN_CHAR_LIMIT:
+        return text
+    available = max(0, AI_CHAT_HISTORY_TURN_CHAR_LIMIT - len(AI_CHAT_HISTORY_TRUNCATION_SUFFIX))
+    return text[:available].rstrip() + AI_CHAT_HISTORY_TRUNCATION_SUFFIX
 
 
 @app.route("/api/ai_chat", methods=["POST"])
@@ -7311,7 +7325,7 @@ def api_ai_chat():
             continue
         text = str(item.get("text") or "").strip()
         if text:
-            clean_history.append({"role": role, "text": text[:2000]})
+            clean_history.append({"role": role, "text": _truncate_ai_chat_history_turn(text)})
     clean_history = clean_history[-AI_CHAT_HISTORY_MESSAGE_LIMIT:]
 
     if not message:
