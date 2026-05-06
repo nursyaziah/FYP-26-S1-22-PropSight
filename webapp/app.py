@@ -4086,7 +4086,7 @@ def _generate_shap_ai_summary(features, predicted_price, town, flat_type,
 
     prompt = (
         "Write a plain-English SHAP explanation for a Singapore HDB resale price prediction. "
-        "Use only the supplied feature impacts. Keep it to 3 short sentences under 110 words.\n"
+        "Use only the supplied feature impacts. Keep it to 3-4 sentences under 140 words.\n"
         "Structure:\n"
         "  Sentence 1: Name the single biggest driver (positive or negative) with its exact dollar impact.\n"
         "  Sentence 2: Explain what that driver means in practical homeowner terms "
@@ -7728,7 +7728,7 @@ If the user asks to compare areas inside a town (for example "Tampines East vs T
 - When discussing reliability or model error, frame it as a data-driven estimate or second opinion, not a guaranteed valuation.
 - Never give buy, sell, hold, renovate, or rent advice. PropSight is decision-support only. Criteria-based comparisons ("best value", "best location") are allowed as data tradeoffs, not instructions. If the question asks for a transaction recommendation, answer the factual part if there is one, then steer the user toward relevant data PropSight already shows.
 - Do not say town ranking, district comparison, flat type performance, price trend, transaction volume, forecast, or lease decay is outside scope; those are PropSight analytics surfaces. If the exact data is not supplied, point them to the relevant PropSight section and say what to look for.
-- Be concise: answer in 2-3 short sentences, under 90 words. Always end on a complete sentence — never trail off mid-thought.
+- Be concise: answer in 3-4 sentences, under 140 words. Always end on a complete sentence — never trail off mid-thought.
 - Warmer fallback when grounding data is missing: when you cannot ground the first sentence in a specific supplied number, do NOT open with "I do not have…" and avoid phrases like "in the current data" or "the breakdown is not available." Instead, acknowledge what you can see from the supplied context (for comparison: panel flat age, predicted price, town; for prediction: my_flat fields and predicted price; for analytics: filters and trend data), give a short partial answer grounded in that, then point to the relevant PropSight surface for the full breakdown. Keep the tone helpful, not apologetic or mechanical.
 {format_rule}
 - Do NOT output follow-up suggestions; the app generates those locally.
@@ -8019,7 +8019,7 @@ Rules:
 - When discussing reliability or model error, do not overstate accuracy. Frame it as a data-driven estimate or second opinion, not a guaranteed valuation.
 - Singapore HDB context to apply where relevant: short remaining lease (<30 years) limits CPF usage and bank loan eligibility, reducing buyer pool and resale value; HDB flats have a 5-year MOP before they can be sold on the open market; low transaction count for a specific block often reflects estate composition or owners holding past MOP, not low demand; price swings on blocks with fewer than 20 transactions can be driven by 1–2 outlier sales.
 - Never give buy, sell, hold, or upgrade advice. PropSight is a decision-support tool only — help the user understand their market position, not tell them what to do.
-- Be concise: for normal questions, answer in 2-3 short sentences under 110 words. If the user explicitly asks for more detail, you may go up to 5 sentences but never exceed 180 words.
+- Be concise: for normal questions, answer in 3-4 sentences under 140 words. If the user explicitly asks for more detail, you may go up to 6 sentences but never exceed 240 words.
 - Always end on a complete sentence. Do not trail off mid-thought.
 - Do not say town ranking, district comparison, flat type performance, price trend, transaction volume, forecast, or lease decay is outside scope; those are PropSight analytics surfaces. If the exact data is not supplied, point them to the relevant PropSight section and explain what to look for.
 - If the user asks to compare areas inside a town (for example "Tampines East vs Tampines West"), explain that the current dashboard compares streets as the available within-town area unit. Point them to Area Comparison / District Comparison rather than the property Comparison page.
@@ -8071,7 +8071,7 @@ def _build_chatbot_format_preference_clause(preference):
     if preference == "detailed":
         return (
             "\nThe user has explicitly chosen more detailed replies. Use the longer-answer "
-            "allowance (up to 5 sentences / 180 words) by default and unpack the reasoning, "
+            "allowance (up to 6 sentences / 240 words) by default and unpack the reasoning, "
             "while still respecting the grounding and anti-jargon rules above."
         )
     return ""
