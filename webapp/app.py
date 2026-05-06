@@ -346,6 +346,9 @@ GENERAL_DAILY_AI_ANSWER_LIMIT = 3
 AI_ANSWER_MAX_TOKENS = 512
 AI_CHAT_MAX_TOKENS = 2048
 AI_CHAT_HISTORY_MESSAGE_LIMIT = 20
+AI_CHAT_MEMORY_MESSAGE_LIMIT = 60
+AI_CHAT_MEMORY_SCOPE_CHAR_LIMIT = 220
+AI_CHAT_MEMORY_TURN_CHAR_LIMIT = 4000
 AI_CHAT_HISTORY_TURN_CHAR_LIMIT = 2000
 AI_CHAT_HISTORY_TRUNCATION_SUFFIX = "…[truncated]"
 AI_USER_QUESTION_OPEN_TAG = "<user_question>"
@@ -386,6 +389,9 @@ SUPABASE_PREDICTIONS_TABLE = os.environ.get(
     "SUPABASE_PREDICTIONS_TABLE", "saved_predictions"
 )
 SUPABASE_REVIEWS_TABLE = os.environ.get("SUPABASE_REVIEWS_TABLE", "reviews")
+SUPABASE_AI_CHAT_SESSIONS_TABLE = os.environ.get(
+    "SUPABASE_AI_CHAT_SESSIONS_TABLE", "ai_chat_sessions"
+)
 
 if not SUPABASE_ENABLED:
     raise RuntimeError(
@@ -3314,7 +3320,23 @@ def _log_analytics_scope_change(user_id, town):
 
 
 CHATBOT_PILL_PAGES = ("predict", "analytics", "comparison")
+CHATBOT_MEMORY_SURFACES = ("predict", "analytics", "comparison")
 CHATBOT_FORMAT_PREFERENCES = ("detailed", "bullets")
+MONTH_NAMES = (
+    "",
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+)
 
 
 def _normalize_chatbot_format_preference(value):
@@ -3532,14 +3554,16 @@ def _predict_log_price_from_scaled_df(df):
 
 
 def _build_scaled_feature_df(town, flat_type, flat_model, floor_area, storey_range,
-                             lease_commence, override_year=None, override_distances=None):
+                             lease_commence, override_year=None, override_month=None,
+                             override_distances=None):
     """Build a single-row scaled feature frame for prediction and explainability."""
     scaler = ARTEFACTS["scaler"]
     encoders = ARTEFACTS["encoders"]
 
     now = datetime.now()
     year = override_year if override_year is not None else now.year
-    month_num = now.month
+    month_num = override_month if override_month is not None else now.month
+    month_num = max(1, min(12, int(month_num)))
 
     flat_age = year - lease_commence
     remaining_lease = max(0, 99 - flat_age)
@@ -3917,6 +3941,7 @@ FEATURE_DESCRIPTIONS = {
     "sora_3m_change_3m": "How much the 3-month SORA has moved compared with three months ago. It captures recent changes in financing pressure.",
     # Seasonal / timing
     "year": "The current year. The model uses this to anchor predictions to today's market level.",
+    "seasonal_timing": "Which month the estimate is anchored to. HDB resale prices can shift slightly by time of year, so this captures a small timing effect.",
     "month_sin": "Which month of the year. HDB prices shift slightly with the seasons — the model accounts for this.",
     "month_cos": "Which month of the year. HDB prices shift slightly with the seasons — the model accounts for this.",
 }
@@ -4123,7 +4148,7 @@ def _build_lease_decay_breakdown(features):
 
 def compute_shap_explanation(town, flat_type, flat_model, floor_area, storey_range,
                              lease_commence, predicted_price=None, override_year=None,
-                             override_distances=None, town_avg_price=None,
+                             override_month=None, override_distances=None, town_avg_price=None,
                              generate_narrative=True):
     if ARTEFACTS.get("model_key") not in SHAP_SUPPORTED_MODEL_KEYS:
         return None
@@ -4136,6 +4161,7 @@ def compute_shap_explanation(town, flat_type, flat_model, floor_area, storey_ran
         storey_range,
         lease_commence,
         override_year=override_year,
+        override_month=override_month,
         override_distances=override_distances,
     )
     fc = _serving_feature_cols()
@@ -4244,7 +4270,8 @@ def compute_shap_explanation(town, flat_type, flat_model, floor_area, storey_ran
 
 
 def predict_price(town, flat_type, flat_model, floor_area, storey_range,
-                  lease_commence, override_year=None, override_distances=None):
+                  lease_commence, override_year=None, override_month=None,
+                  override_distances=None):
     """
     Run the full feature engineering + prediction pipeline for a single property.
     Returns dict with predicted_price and model_label.
@@ -4257,6 +4284,7 @@ def predict_price(town, flat_type, flat_model, floor_area, storey_range,
         storey_range,
         lease_commence,
         override_year=override_year,
+        override_month=override_month,
         override_distances=override_distances,
     )
     pred_log = _predict_log_price_from_scaled_df(df)
@@ -4274,8 +4302,151 @@ def predict_price(town, flat_type, flat_model, floor_area, storey_range,
         result={
             "model_label": performance.get("label", ARTEFACTS.get("model_label", "Model")),
             "market_shock": raw_values.get("market_shock"),
+            "prediction_year": raw_values.get("prediction_year"),
+            "prediction_month": raw_values.get("prediction_month"),
         },
     )
+
+
+def _month_name(month_num):
+    try:
+        idx = int(month_num)
+    except (TypeError, ValueError):
+        return ""
+    return MONTH_NAMES[idx] if 1 <= idx <= 12 else ""
+
+
+def _seasonal_question_context_text(history):
+    if not isinstance(history, list):
+        return ""
+    recent = history[-4:]
+    return " ".join(str(item.get("text") or "") for item in recent if isinstance(item, dict))
+
+
+def _is_seasonal_timing_question(question, history=None):
+    text = str(question or "").lower()
+    prior = _seasonal_question_context_text(history).lower()
+    combined = text + " " + prior
+    seasonal_context = re.search(r"\b(seasonal|seasonality|season|timing|time\s+of\s+year)\b", combined)
+    month_followup = re.search(r"\b(best|worst|better|weaker|highest|lowest|which|what)\b.*\bmonths?\b", text)
+    direct_month_question = re.search(r"\bmonths?\b.*\b(best|worst|better|weaker|highest|lowest)\b", text)
+    return bool(seasonal_context or month_followup or direct_month_question)
+
+
+def _build_prediction_seasonal_timing_context(my_flat, chart_data=None):
+    """Rank model-only monthly timing for a flat, holding the property details constant."""
+    if not isinstance(my_flat, dict):
+        return None
+    chart_data = chart_data if isinstance(chart_data, dict) else {}
+    required = ("town", "flat_type", "flat_model", "floor_area", "storey_range", "lease_commence")
+    if any(my_flat.get(key) in (None, "") for key in required):
+        return None
+
+    try:
+        town = str(my_flat.get("town") or "").strip()
+        flat_type = str(my_flat.get("flat_type") or "").strip()
+        flat_model = str(my_flat.get("flat_model") or "").strip()
+        floor_area = float(my_flat.get("floor_area"))
+        storey_range = str(my_flat.get("storey_range") or "").strip()
+        lease_commence = int(my_flat.get("lease_commence"))
+    except (TypeError, ValueError):
+        return None
+
+    year = int(_coerce_float(
+        chart_data.get("prediction_year") or my_flat.get("prediction_year"),
+        datetime.now().year,
+    ) or datetime.now().year)
+    current_month = int(_coerce_float(
+        chart_data.get("prediction_month") or my_flat.get("prediction_month"),
+        datetime.now().month,
+    ) or datetime.now().month)
+    current_month = max(1, min(12, current_month))
+
+    block_distances = None
+    street_name = str(my_flat.get("street_name") or "").strip()
+    if street_name:
+        try:
+            block_distances = _get_block_distances(
+                town,
+                street_name,
+                str(my_flat.get("block") or "").strip(),
+            )
+        except Exception:
+            block_distances = None
+
+    current_multiplier = _resolve_price_index_multiplier(year, current_month)
+    monthly = []
+    try:
+        for month_num in range(1, 13):
+            df, _ = _build_scaled_feature_df(
+                town,
+                flat_type,
+                flat_model,
+                floor_area,
+                storey_range,
+                lease_commence,
+                override_year=year,
+                override_month=month_num,
+                override_distances=block_distances,
+            )
+            pred_log = _predict_log_price_from_scaled_df(df)
+            price = float(np.expm1(pred_log)) * current_multiplier
+            monthly.append({
+                "month": month_num,
+                "month_name": _month_name(month_num),
+                "estimated_price": int(round(price)),
+            })
+    except Exception:
+        app.logger.warning("Could not build seasonal timing context", exc_info=True)
+        return None
+
+    if not monthly:
+        return None
+    ranked = sorted(monthly, key=lambda item: item["estimated_price"], reverse=True)
+    current = next((item for item in monthly if item["month"] == current_month), None)
+    current_price = current["estimated_price"] if current else None
+    for item in monthly:
+        item["delta_vs_current"] = (
+            int(item["estimated_price"] - current_price)
+            if current_price is not None
+            else None
+        )
+    current_rank = next(
+        (idx + 1 for idx, item in enumerate(ranked) if item["month"] == current_month),
+        None,
+    )
+
+    seasonal_feature = next(
+        (
+            item for item in chart_data.get("shap_features", [])
+            if isinstance(item, dict)
+            and (
+                item.get("key") == "seasonal_timing"
+                or str(item.get("label") or "").strip().lower() == "seasonal timing"
+            )
+        ),
+        None,
+    )
+    seasonal_impact = None
+    if isinstance(seasonal_feature, dict):
+        seasonal_impact = _coerce_float(seasonal_feature.get("dollar_impact"))
+
+    return {
+        "prediction_year": year,
+        "current_month": current_month,
+        "current_month_name": _month_name(current_month),
+        "current_month_rank": current_rank,
+        "current_dollar_impact": int(round(seasonal_impact)) if seasonal_impact is not None else None,
+        "best_months": [item["month_name"] for item in ranked[:3]],
+        "weakest_months": [item["month_name"] for item in ranked[-3:]],
+        "spread_dollars": int(ranked[0]["estimated_price"] - ranked[-1]["estimated_price"]),
+        "top_months": ranked[:3],
+        "bottom_months": list(reversed(ranked[-3:])),
+        "note": (
+            "Month ranking is a small model-only timing signal with the flat details held constant; "
+            "actual sale outcomes still depend more on comparable transactions, lease, location, and buyer demand."
+        ),
+    }
 
 
 def _get_recent_similar_transactions(
@@ -6865,9 +7036,12 @@ def _serialize_ai_chart_data(chart_data, limit):
     lease_decay_breakdown = chart_data.get("lease_decay_breakdown")
     shap_features = _compact_shap_features_for_ai(chart_data.get("shap_features"))
     market_shock = chart_data.get("market_shock")
+    seasonal_timing_context = chart_data.get("seasonal_timing_context")
     prioritized = {}
     if isinstance(shap_answer_focus, dict) and shap_answer_focus:
         prioritized["shap_answer_focus"] = shap_answer_focus
+    if isinstance(seasonal_timing_context, dict) and seasonal_timing_context:
+        prioritized["seasonal_timing_context"] = seasonal_timing_context
     if isinstance(lease_decay_breakdown, dict) and lease_decay_breakdown:
         prioritized["lease_decay_breakdown"] = lease_decay_breakdown
     if shap_features:
@@ -6950,7 +7124,7 @@ _SHAP_MATCH_STOPWORDS = {
 _SHAP_IMPACT_PATTERN = re.compile(
     r"\b(shap|impact|affect|affects|effect|add|adds|adding|cost|costing|reduce|"
     r"reduces|reducing|drag|boost|push|pull|contribute|contribution|why|factor|"
-    r"feature|lower|increase|decrease|dollar)\b"
+    r"feature|explain|meaning|means|mean|lower|increase|decrease|dollar)\b"
 )
 
 _SHAP_DISTINCTIVE_TOKENS = {
@@ -7548,6 +7722,7 @@ If the user asks to compare areas inside a town (for example "Tampines East vs T
 - If the user asks about the biggest factor, main driver, strongest impact, or what affects the price most, use chart_data.shap_features[0]. State its label and exact dollar_impact. Do not answer with market_shock unless the top SHAP feature itself is a market-shock feature. If shap_features is missing, use the warmer fallback rule below.
 - If the user asks about any specific SHAP feature or factor impact, quote only that feature's exact dollar_impact from chart_data.shap_features. If grouping multiple SHAP features, list each contributing label and dollar_impact and make the total equal the shown components. Never invent a SHAP dollar amount that is not directly present in chart_data.
 - If the user asks about lease decay, lease impact, or how much lease is reducing their flat's value, use only chart_data.lease_decay_breakdown: quote chart_data.lease_decay_breakdown.total_dollar_impact, list each feature in chart_data.lease_decay_breakdown.components with its label and dollar_impact, and never invent a lease impact number not derivable from lease_decay_breakdown. If lease_decay_breakdown is missing or has zero components, use the warmer fallback rule below instead of fabricating.
+- If the user asks what "Seasonal timing" means or asks which months are best/worst, use chart_data.seasonal_timing_context when supplied. State the current month, best_months, spread_dollars, and current_dollar_impact if available. Make clear this is a small model timing signal with the flat details held constant, not a guarantee or selling recommendation. Do NOT say the model does not specify exact months when seasonal_timing_context is supplied.
 - When explaining any SHAP feature, use that feature's `description` field if supplied so the wording matches the SHAP card.
 - If chart_data includes a `market_shock` object with severity not "stable", and the user asks about local market direction, upswing, cooling, or recent movement, you MUST: (1) quote the exact percentage from market_shock.summary, (2) explain it as the latest 1-month local $/sqm vs its 3-month rolling benchmark, (3) tie it to the user's predicted price by name, (4) note this is a recent local move, not a long-term trend. Do not paraphrase the percentage away.
 - When discussing reliability or model error, frame it as a data-driven estimate or second opinion, not a guaranteed valuation.
@@ -7729,6 +7904,11 @@ def api_ai_answer():
         if shap_focus:
             chart_data = dict(chart_data)
             chart_data["shap_answer_focus"] = shap_focus
+        if _is_seasonal_timing_question(question):
+            seasonal_context = _build_prediction_seasonal_timing_context(my_flat, chart_data)
+            if seasonal_context:
+                chart_data = dict(chart_data)
+                chart_data["seasonal_timing_context"] = seasonal_context
 
     context_data = _serialize_ai_chart_data(chart_data, context_limit)
     my_flat_context = _format_my_flat_context(my_flat)
@@ -7824,6 +8004,7 @@ Rules:
 - If the user asks about the biggest factor, main driver, strongest impact, or what affects the price most, use chart_data.shap_features[0]. State its label and exact dollar_impact. Do not answer with market_shock unless the top SHAP feature itself is a market-shock feature. If shap_features is missing or empty, use the warmer fallback rule below and point them to the SHAP breakdown if available.
 - If the user asks about any specific SHAP feature or factor impact, quote only that feature's exact dollar_impact from chart_data.shap_features. If grouping multiple SHAP features, list each contributing label and dollar_impact and make the total equal the shown components. Never invent a SHAP dollar amount that is not directly present in chart_data.
 - If the user asks about lease decay, lease impact, or how much lease is reducing their flat's value, use only chart_data.lease_decay_breakdown: quote chart_data.lease_decay_breakdown.total_dollar_impact, list each feature in chart_data.lease_decay_breakdown.components with its label and dollar_impact, and never invent a lease impact number not derivable from lease_decay_breakdown. If lease_decay_breakdown is missing or has zero components, use the warmer fallback rule below instead of fabricating.
+- If the user asks what "Seasonal timing" means or asks which months are best/worst, use chart_data.seasonal_timing_context when supplied. State the current month, best_months, spread_dollars, and current_dollar_impact if available. Make clear this is a small model timing signal with the flat details held constant, not a guarantee or selling recommendation. Do NOT say the model does not specify exact months when seasonal_timing_context is supplied.
 - When explaining any SHAP feature, use that feature's `description` field if supplied so the wording matches the SHAP card explanation.
 - If chart_data includes a `market_shock` object and its severity is
   not "stable", and the user asks anything about the local market
@@ -7861,11 +8042,11 @@ You MUST end your reply with exactly ONE follow-up suggestion line whenever ALL 
       (b) Unexplored surface: the conversation so far has only covered the current surface's data, and at least one of {{comparison context, analytics/market trend context, lease decay chart, 5-Year Forecast}} has NOT yet been raised by either side.
   (3) The follow-up is genuinely useful — it suggests a concrete next question the user would not obviously think to ask, grounded in what was just discussed.
 Format the suggestion on its OWN final line, separated from the rest of the reply by a blank line:
-  **Want to go deeper?** <one specific next question, ≤20 words, ending with a question mark>
+  **Want to go deeper?** <one specific next question, ≤20 words, ending with a question mark; do not start it with "Want">
 Examples of good follow-up questions:
-  - "**Want to go deeper?** Want to compare this flat against another in Queenstown to see which offers better value per lease year?"
-  - "**Want to go deeper?** Want to see the historical price trend for Queenstown 5-room flats on the Analytics page?"
-  - "**Want to go deeper?** Want a 5-year projection for this flat factoring in lease decay?"
+  - "**Want to go deeper?** Compare this flat against another in Queenstown for value per lease year?"
+  - "**Want to go deeper?** Open the historical price trend for Queenstown 5-room flats on Analytics?"
+  - "**Want to go deeper?** See a 5-year projection for this flat with lease decay included?"
 Do NOT add a follow-up if it is the very first message of the conversation, or if you have already appended one in the immediately previous reply."""
 
 
@@ -7904,6 +8085,115 @@ def _truncate_ai_chat_history_turn(text):
     return text[:available].rstrip() + AI_CHAT_HISTORY_TRUNCATION_SUFFIX
 
 
+def _truncate_ai_chat_memory_turn(text):
+    """Keep account-level chat memory bounded before storing it."""
+    if len(text) <= AI_CHAT_MEMORY_TURN_CHAR_LIMIT:
+        return text
+    available = max(0, AI_CHAT_MEMORY_TURN_CHAR_LIMIT - len(AI_CHAT_HISTORY_TRUNCATION_SUFFIX))
+    return text[:available].rstrip() + AI_CHAT_HISTORY_TRUNCATION_SUFFIX
+
+
+def _normalize_ai_chat_memory_surface(value):
+    surface = str(value or "").strip().lower()
+    if surface == "prediction":
+        surface = "predict"
+    if surface not in CHATBOT_MEMORY_SURFACES:
+        raise ValueError("Invalid surface")
+    return surface
+
+
+def _normalize_ai_chat_memory_scope_key(value):
+    scope_key = str(value or "default").strip() or "default"
+    return scope_key[:AI_CHAT_MEMORY_SCOPE_CHAR_LIMIT]
+
+
+def _sanitize_ai_chat_memory_history(history):
+    if not isinstance(history, list):
+        return []
+    clean = []
+    for item in history:
+        if not isinstance(item, dict):
+            continue
+        role = item.get("role")
+        if role not in {"user", "model"}:
+            continue
+        text = str(item.get("text") or "").strip()
+        if text:
+            clean.append({
+                "role": role,
+                "text": _truncate_ai_chat_memory_turn(text),
+            })
+    return clean[-AI_CHAT_MEMORY_MESSAGE_LIMIT:]
+
+
+def _get_ai_chat_memory(user_id, surface, scope_key):
+    rows = _supabase_request(
+        SUPABASE_AI_CHAT_SESSIONS_TABLE,
+        filters={
+            "select": "history",
+            "user_id": f"eq.{user_id}",
+            "surface": f"eq.{surface}",
+            "scope_key": f"eq.{scope_key}",
+            "limit": "1",
+        },
+    ) or []
+    if not rows:
+        return []
+    return _sanitize_ai_chat_memory_history(rows[0].get("history") or [])
+
+
+def _save_ai_chat_memory(user_id, surface, scope_key, history):
+    clean_history = _sanitize_ai_chat_memory_history(history)
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    existing = _supabase_request(
+        SUPABASE_AI_CHAT_SESSIONS_TABLE,
+        filters={
+            "select": "id",
+            "user_id": f"eq.{user_id}",
+            "surface": f"eq.{surface}",
+            "scope_key": f"eq.{scope_key}",
+            "limit": "1",
+        },
+    ) or []
+    payload = {"history": clean_history, "updated_at": now}
+    if existing:
+        _supabase_request(
+            SUPABASE_AI_CHAT_SESSIONS_TABLE,
+            method="PATCH",
+            filters={"id": f"eq.{existing[0].get('id')}"},
+            payload=payload,
+            prefer="return=minimal",
+        )
+    else:
+        _supabase_request(
+            SUPABASE_AI_CHAT_SESSIONS_TABLE,
+            method="POST",
+            payload={
+                "user_id": user_id,
+                "surface": surface,
+                "scope_key": scope_key,
+                "history": clean_history,
+                "created_at": now,
+                "updated_at": now,
+            },
+            prefer="return=minimal",
+        )
+    return clean_history
+
+
+def _delete_ai_chat_memory(user_id, surface, scope_key):
+    _supabase_request(
+        SUPABASE_AI_CHAT_SESSIONS_TABLE,
+        method="DELETE",
+        filters={
+            "user_id": f"eq.{user_id}",
+            "surface": f"eq.{surface}",
+            "scope_key": f"eq.{scope_key}",
+        },
+        prefer="return=minimal",
+    )
+
+
 @app.route("/api/ai_chat", methods=["POST"])
 @api_login_required
 def api_ai_chat():
@@ -7921,6 +8211,26 @@ def api_ai_chat():
         context = {}
     if not isinstance(history, list):
         history = []
+    surface = str(body.get("surface") or context.get("surface") or "analytics").strip().lower()
+    try:
+        memory_surface = _normalize_ai_chat_memory_surface(
+            body.get("memory_surface") or surface
+        )
+        memory_scope_key = _normalize_ai_chat_memory_scope_key(
+            body.get("memory_scope_key") or body.get("scope_key") or "default"
+        )
+    except ValueError:
+        memory_surface = None
+        memory_scope_key = None
+    if not history and memory_surface and memory_scope_key:
+        try:
+            history = _get_ai_chat_memory(
+                _session_user_id(),
+                memory_surface,
+                memory_scope_key,
+            )
+        except SupabaseError:
+            history = []
     raw_format = body.get("format_preference", "__omit__")
     if raw_format == "__omit__":
         format_preference = session.get("chatbot_format_preference")
@@ -7930,22 +8240,15 @@ def api_ai_chat():
         except ValueError:
             return jsonify({"error": "Invalid format"}), 400
 
-    clean_history = []
-    for item in history:
-        if not isinstance(item, dict):
-            continue
-        role = item.get("role")
-        if role not in {"user", "model"}:
-            continue
-        text = str(item.get("text") or "").strip()
-        if text:
-            clean_history.append({"role": role, "text": _truncate_ai_chat_history_turn(text)})
-    clean_history = clean_history[-AI_CHAT_HISTORY_MESSAGE_LIMIT:]
+    memory_history = _sanitize_ai_chat_memory_history(history)
+    clean_history = [
+        {"role": item["role"], "text": _truncate_ai_chat_history_turn(item["text"])}
+        for item in memory_history
+    ][-AI_CHAT_HISTORY_MESSAGE_LIMIT:]
 
     if not message:
         return jsonify({"error": "No message provided"}), 400
 
-    surface = str(body.get("surface") or context.get("surface") or "analytics").strip().lower()
     active_section = str(body.get("active_section") or context.get("active_section") or "").strip()
     filter_desc = _build_ai_filter_desc(context, surface)
     surface_desc = _build_ai_surface_desc(surface, active_section)
@@ -7958,6 +8261,11 @@ def api_ai_chat():
         if shap_focus:
             chart_data = dict(chart_data)
             chart_data["shap_answer_focus"] = shap_focus
+        if _is_seasonal_timing_question(message, clean_history):
+            seasonal_context = _build_prediction_seasonal_timing_context(my_flat, chart_data)
+            if seasonal_context:
+                chart_data = dict(chart_data)
+                chart_data["seasonal_timing_context"] = seasonal_context
 
     context_data = _serialize_ai_chart_data(chart_data, context_limit)
     my_flat_context = _format_my_flat_context(my_flat)
@@ -8004,9 +8312,66 @@ def api_ai_chat():
 
     reply = _polish_ai_homeowner_text(text.strip())
 
+    if memory_surface and memory_scope_key:
+        try:
+            _save_ai_chat_memory(
+                _session_user_id(),
+                memory_surface,
+                memory_scope_key,
+                memory_history + [
+                    {"role": "user", "text": message},
+                    {"role": "model", "text": reply},
+                ],
+            )
+        except SupabaseError as exc:
+            app.logger.warning("Could not save account chat memory: %s", exc)
+
     _log_feature_view(_session_user_id(), "ai_chat")
 
     return jsonify({"reply": reply})
+
+
+@app.route("/api/ai_chat/memory", methods=["GET", "POST", "DELETE"])
+@api_login_required
+def api_ai_chat_memory():
+    """Load, persist, or clear account-level chatbot memory for one page/scope."""
+    user_id = _session_user_id()
+    body = request.get_json(silent=True) or {}
+    raw_surface = request.args.get("surface") if request.method == "GET" else body.get("surface")
+    raw_scope_key = (
+        request.args.get("scope_key")
+        if request.method == "GET"
+        else body.get("scope_key")
+    )
+    try:
+        surface = _normalize_ai_chat_memory_surface(raw_surface)
+        scope_key = _normalize_ai_chat_memory_scope_key(raw_scope_key)
+    except ValueError:
+        return jsonify({"error": "Invalid chat memory scope"}), 400
+
+    try:
+        if request.method == "GET":
+            return jsonify({
+                "ok": True,
+                "history": _get_ai_chat_memory(user_id, surface, scope_key),
+            })
+
+        if request.method == "DELETE":
+            _delete_ai_chat_memory(user_id, surface, scope_key)
+            return jsonify({"ok": True, "history": []})
+
+        history = _save_ai_chat_memory(
+            user_id,
+            surface,
+            scope_key,
+            body.get("history", []),
+        )
+        return jsonify({"ok": True, "history": history})
+    except SupabaseError as exc:
+        return jsonify({
+            "error": "Could not access chat memory",
+            "details": str(exc),
+        }), 502
 
 
 @app.route("/api/ai_chat/preferences", methods=["POST"])

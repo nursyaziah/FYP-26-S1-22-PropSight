@@ -107,6 +107,20 @@ CREATE TABLE IF NOT EXISTS feature_view_log (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS ai_chat_sessions (
+    id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    surface    TEXT NOT NULL CHECK (surface IN ('predict', 'analytics', 'comparison')),
+    scope_key  TEXT NOT NULL DEFAULT 'default',
+    history    JSONB NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(history) = 'array'),
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, surface, scope_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_chat_sessions_user_surface
+    ON ai_chat_sessions (user_id, surface, updated_at DESC);
+
 CREATE SEQUENCE IF NOT EXISTS feature_view_log_id_seq;
 
 ALTER TABLE feature_view_log

@@ -1163,6 +1163,86 @@
       font-family: 'Plus Jakarta Sans', sans-serif;
     }
     .chatbot-config-cancel:hover { color: #475569; }
+    .chatbot-config-reset-section {
+      border-top: 1px solid #f1f5f9;
+      padding-top: 12px;
+    }
+    .chatbot-config-reset {
+      background: #fff;
+      border: 1.5px solid #fecaca;
+      border-radius: 50px;
+      color: #b91c1c;
+      cursor: pointer;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 12.5px;
+      font-weight: 700;
+      padding: 6px 14px;
+      transition: all 0.18s;
+    }
+    .chatbot-config-reset:hover {
+      background: #fef2f2;
+      border-color: #f87171;
+    }
+    .chatbot-config-hint {
+      color: #94a3b8;
+      font-size: 11.5px;
+      line-height: 1.45;
+      margin-top: 6px;
+    }
+    .chatbot-config-history-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .chatbot-config-secondary {
+      background: #f8fafc;
+      border: 1.5px solid #bfdbfe;
+      border-radius: 50px;
+      color: #2563eb;
+      cursor: pointer;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 12.5px;
+      font-weight: 700;
+      padding: 6px 14px;
+      transition: all 0.18s;
+    }
+    .chatbot-config-secondary:hover {
+      background: rgba(37,99,235,0.06);
+      border-color: #60a5fa;
+    }
+    .chatbot-memory-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 10px;
+      max-height: 260px;
+      overflow-y: auto;
+    }
+    .chatbot-memory-turn {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 8px 10px;
+    }
+    .chatbot-memory-role {
+      color: #64748b;
+      font-size: 10.5px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      margin-bottom: 3px;
+      text-transform: uppercase;
+    }
+    .chatbot-memory-text {
+      color: #1e293b;
+      font-size: 12.5px;
+      line-height: 1.5;
+    }
+    .chatbot-memory-empty {
+      color: #94a3b8;
+      font-size: 12.5px;
+      line-height: 1.5;
+      margin-top: 8px;
+    }
     .chatbot-config-error {
       color: #dc2626;
       font-size: 11.5px;
@@ -4688,6 +4768,8 @@ if (IS_PREMIUM) {
     let pillsAlreadySeen = {{ 'true' if (g.user and g.user.get('chatbot_pills_seen_analytics')) else 'false' }};
     let currentChatbotFormatPreference = {{ (g.user.get('chatbot_format_preference') if g.user else none) | tojson }};
     const chatStorageKey = 'propsight:analytics:aiChat:v1:' + {{ g.user.get('id')|tojson }};
+    const chatMemorySurface = 'analytics';
+    const chatMemoryScopeKey = 'default';
 
     const chatWidget   = document.getElementById('aiChatWidget');
     const chatToggle   = document.getElementById('aiChatToggle');
@@ -4803,7 +4885,11 @@ if (IS_PREMIUM) {
     //Render dynamic suggestion buttons
     function renderSuggestions(suggestions) {
         chatSuggestions.innerHTML = '';
-        if (!suggestions || !suggestions.length) return;
+        if (!suggestions || !suggestions.length) {
+            chatSuggestions.style.display = 'none';
+            return;
+        }
+        chatSuggestions.style.display = '';
         suggestions.forEach(q => {
             const btn = document.createElement('button');
             btn.className = 'ai-chat-suggestion';
@@ -4888,6 +4974,61 @@ if (IS_PREMIUM) {
         return data;
     }
 
+    function resetAnalyticsChatHistory() {
+        chatHistory = [];
+        try { localStorage.removeItem(chatStorageKey); } catch (e) {}
+        resetAccountChatHistory();
+        if (typeof hideQuoteBtn === 'function') hideQuoteBtn();
+        if (chatMessages) chatMessages.innerHTML = '';
+        if (chatSuggestions) chatSuggestions.style.display = '';
+        renderStarters();
+        preferencePillsShown = false;
+    }
+
+    function rememberAnalyticsTurn(userText, modelText) {
+        if (!modelText) return;
+        chatHistory.push({ role: 'user', text: userText });
+        chatHistory.push({ role: 'model', text: modelText });
+        saveStoredChatHistory();
+    }
+
+    function buildAnalyticsMemoryHtml() {
+        if (!chatHistory.length) {
+            return '<div class="chatbot-memory-empty">No chat memory yet. Ask a question to start one.</div>';
+        }
+        return '<div class="chatbot-memory-list">' + chatHistory.slice(-20).map(h => {
+            const role = h.role === 'user' ? 'You' : 'AI';
+            const text = escapeHtml(h.text).replace(/\n/g, '<br>');
+            return '<div class="chatbot-memory-turn">'
+                + '<div class="chatbot-memory-role">' + role + '</div>'
+                + '<div class="chatbot-memory-text">' + text + '</div>'
+                + '</div>';
+        }).join('') + '</div>';
+    }
+
+    function appendAnalyticsMemoryView() {
+        const existing = document.getElementById('analyticsMemoryView');
+        if (existing) existing.remove();
+        const wrap = document.createElement('div');
+        wrap.id = 'analyticsMemoryView';
+        wrap.className = 'chatbot-config-card';
+        wrap.innerHTML = ''
+            + '<div class="chatbot-config-header">'
+            +   '<span class="chatbot-config-icon"><i class="bi bi-clock-history"></i></span>'
+            +   '<div>'
+            +     '<div class="chatbot-config-title">Chat Memory</div>'
+            +     '<div class="chatbot-config-sub">What this chatbot will send as previous context</div>'
+            +   '</div>'
+            + '</div>'
+            + buildAnalyticsMemoryHtml()
+            + '<div class="chatbot-config-actions" style="margin-top:12px;">'
+            +   '<button type="button" class="chatbot-config-cancel" id="analyticsMemoryClose">Close</button>'
+            + '</div>';
+        chatMessages.appendChild(wrap);
+        wrap.querySelector('#analyticsMemoryClose').addEventListener('click', () => wrap.remove());
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
     function maybeShowPreferencePills() {
         if (!chatMessages) return;
         const existing = document.getElementById('analyticsAiPreferenceRow');
@@ -4911,6 +5052,14 @@ if (IS_PREMIUM) {
             +     '<button type="button" class="chatbot-config-opt" data-val="detailed">More Detailed</button>'
             +     '<button type="button" class="chatbot-config-opt" data-val="bullets">Bullet Points</button>'
             +   '</div>'
+            + '</div>'
+            + '<div class="chatbot-config-section chatbot-config-reset-section">'
+            +   '<div class="chatbot-config-label">Chat History</div>'
+            +   '<div class="chatbot-config-history-actions">'
+            +     '<button type="button" class="chatbot-config-secondary" id="analyticsConfigViewMemory">View Chat Memory</button>'
+            +     '<button type="button" class="chatbot-config-reset" id="analyticsConfigReset">Reset Chat History</button>'
+            +   '</div>'
+            +   '<div class="chatbot-config-hint">Clears this conversation on this device and restores starter prompts.</div>'
             + '</div>'
             + '<div class="chatbot-config-actions">'
             +   '<button type="button" class="chatbot-config-apply" id="analyticsConfigApply">Apply</button>'
@@ -4947,6 +5096,15 @@ if (IS_PREMIUM) {
             e.stopPropagation();
             wrap.remove();
         });
+        wrap.querySelector('#analyticsConfigReset').addEventListener('click', e => {
+            e.stopPropagation();
+            if (!confirm('Reset this chat history?')) return;
+            resetAnalyticsChatHistory();
+        });
+        wrap.querySelector('#analyticsConfigViewMemory').addEventListener('click', e => {
+            e.stopPropagation();
+            appendAnalyticsMemoryView();
+        });
         chatMessages.appendChild(wrap);
         chatMessages.scrollTop = chatMessages.scrollHeight;
     }
@@ -4970,31 +5128,86 @@ if (IS_PREMIUM) {
     }
     const removeTyping = () => { const el = document.getElementById('aiChatTyping'); if (el) el.remove(); };
 
+    function normalizeChatHistory(history) {
+        return Array.isArray(history)
+            ? history.filter(h => h && (h.role === 'user' || h.role === 'model') && h.text)
+            : [];
+    }
+
     function loadStoredChatHistory() {
         try {
             const raw = localStorage.getItem(chatStorageKey);
             const parsed = raw ? JSON.parse(raw) : [];
-            return Array.isArray(parsed)
-                ? parsed.filter(h => h && (h.role === 'user' || h.role === 'model') && h.text)
-                : [];
+            return normalizeChatHistory(parsed);
         } catch (e) {
             return [];
         }
+    }
+
+    async function loadAccountChatHistory() {
+        try {
+            const params = new URLSearchParams({
+                surface: chatMemorySurface,
+                scope_key: chatMemoryScopeKey
+            });
+            const resp = await fetch('/api/ai_chat/memory?' + params.toString(), {
+                credentials: 'same-origin'
+            });
+            if (!resp.ok) return [];
+            const data = await resp.json().catch(() => ({}));
+            return normalizeChatHistory(data.history);
+        } catch (e) {
+            return [];
+        }
+    }
+
+    function saveAccountChatHistory() {
+        fetch('/api/ai_chat/memory', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({
+                surface: chatMemorySurface,
+                scope_key: chatMemoryScopeKey,
+                history: chatHistory
+            })
+        }).catch(() => {});
+    }
+
+    function resetAccountChatHistory() {
+        fetch('/api/ai_chat/memory', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({
+                surface: chatMemorySurface,
+                scope_key: chatMemoryScopeKey
+            })
+        }).catch(() => {});
     }
 
     function saveStoredChatHistory() {
         try {
             localStorage.setItem(chatStorageKey, JSON.stringify(chatHistory));
         } catch (e) {}
+        saveAccountChatHistory();
     }
 
-    function restoreChatHistory() {
-        chatHistory = loadStoredChatHistory();
+    function renderRestoredChatHistory() {
         if (!chatHistory.length) return;
         chatHistory.forEach(h => {
             appendBubble(h.text, h.role === 'user' ? 'user' : 'bot', h.role === 'model');
         });
         chatSuggestions.innerHTML = '';
+        chatSuggestions.style.display = 'none';
+    }
+
+    async function restoreChatHistory() {
+        const accountHistory = await loadAccountChatHistory();
+        chatHistory = accountHistory.length ? accountHistory : loadStoredChatHistory();
+        if (!chatHistory.length) return;
+        try { localStorage.setItem(chatStorageKey, JSON.stringify(chatHistory)); } catch (e) {}
+        renderRestoredChatHistory();
     }
 
     restoreChatHistory();
@@ -5113,28 +5326,35 @@ if (IS_PREMIUM) {
         chatInput.value = '';
         autoResizeChatInput();
         chatSendBtn.disabled = true;
+        if (chatSuggestions) chatSuggestions.style.display = 'none';
         const existingPrefRow = document.getElementById('analyticsAiPreferenceRow');
         if (existingPrefRow) existingPrefRow.remove();
-        appendBubble(text, 'user');
-        if (isPredictionQuestion(text)) {
-            appendBubble(buildAnalyticsPredictRedirect(), 'bot');
-            renderSuggestions(buildChatStarters());
+	        appendBubble(text, 'user');
+	        if (isPredictionQuestion(text)) {
+	            const predictReply = buildAnalyticsPredictRedirect();
+	            appendBubble(predictReply, 'bot');
+	            rememberAnalyticsTurn(text, predictReply);
+	            renderSuggestions(buildChatStarters());
+	            chatBusy = false;
+            chatSendBtn.disabled = false;
+            chatInput.focus();
+            return;
+	        }
+	        if (isAreaLocationQuestion(text)) {
+	            const areaReply = buildAnalyticsAreaRedirect();
+	            appendBubble(areaReply, 'bot');
+	            rememberAnalyticsTurn(text, areaReply);
+	            renderSuggestions(buildChatStarters());
             chatBusy = false;
             chatSendBtn.disabled = false;
             chatInput.focus();
             return;
-        }
-        if (isAreaLocationQuestion(text)) {
-            appendBubble(buildAnalyticsAreaRedirect(), 'bot');
-            renderSuggestions(buildChatStarters());
-            chatBusy = false;
-            chatSendBtn.disabled = false;
-            chatInput.focus();
-            return;
-        }
-        if (isPropertyComparisonQuestion(text)) {
-            appendBubble(buildAnalyticsComparisonRedirect(), 'bot');
-            renderSuggestions(buildChatStarters());
+	        }
+	        if (isPropertyComparisonQuestion(text)) {
+	            const comparisonReply = buildAnalyticsComparisonRedirect();
+	            appendBubble(comparisonReply, 'bot');
+	            rememberAnalyticsTurn(text, comparisonReply);
+	            renderSuggestions(buildChatStarters());
             chatBusy = false;
             chatSendBtn.disabled = false;
             chatInput.focus();
@@ -5149,6 +5369,8 @@ if (IS_PREMIUM) {
 	                    message: text,
 	                    history: chatHistory,
 	                    surface: 'analytics',
+	                    memory_surface: chatMemorySurface,
+	                    memory_scope_key: chatMemoryScopeKey,
 	                    active_section: activeInsightSection,
 	                    format_preference: currentChatbotFormatPreference,
 	                    context: {
@@ -5178,12 +5400,10 @@ if (IS_PREMIUM) {
                 if (isLikelyIncompleteAiReply(reply)) {
                     appendBubble('The AI response was cut off before it finished. Please try that question again in a moment.', 'bot');
                     renderSuggestions(buildChatStarters());
-                } else {
-                    const linkedReply = withAnalyticsResourceLinks(text, reply);
-                    chatHistory.push({ role: 'user', text });
-                    chatHistory.push({ role: 'model', text: reply });
-                    saveStoredChatHistory();
-                    appendBubble(linkedReply || 'No response received.', 'bot', Boolean(reply));
+	                } else {
+	                    const linkedReply = withAnalyticsResourceLinks(text, reply);
+	                    rememberAnalyticsTurn(text, reply);
+	                    appendBubble(linkedReply || 'No response received.', 'bot', Boolean(reply));
                     renderSuggestions(buildChatStarters());
                     if (IS_PREMIUM && reply && !pillsAlreadySeen) {
                         maybeShowPreferencePills();

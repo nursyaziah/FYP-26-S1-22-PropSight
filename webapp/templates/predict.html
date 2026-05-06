@@ -1143,6 +1143,86 @@ textarea.chat-inp {
   font-family: 'Plus Jakarta Sans', sans-serif;
 }
 .chatbot-config-cancel:hover { color: #475569; }
+.chatbot-config-reset-section {
+  border-top: 1px solid #f1f5f9;
+  padding-top: 12px;
+}
+.chatbot-config-reset {
+  background: #fff;
+  border: 1.5px solid #fecaca;
+  border-radius: 50px;
+  color: #b91c1c;
+  cursor: pointer;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 6px 14px;
+  transition: all 0.18s;
+}
+.chatbot-config-reset:hover {
+  background: #fef2f2;
+  border-color: #f87171;
+}
+.chatbot-config-hint {
+  color: #94a3b8;
+  font-size: 11.5px;
+  line-height: 1.45;
+  margin-top: 6px;
+}
+.chatbot-config-history-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.chatbot-config-secondary {
+  background: #f8fafc;
+  border: 1.5px solid #bfdbfe;
+  border-radius: 50px;
+  color: #2563eb;
+  cursor: pointer;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 6px 14px;
+  transition: all 0.18s;
+}
+.chatbot-config-secondary:hover {
+  background: rgba(37,99,235,0.06);
+  border-color: #60a5fa;
+}
+.chatbot-memory-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.chatbot-memory-turn {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+.chatbot-memory-role {
+  color: #64748b;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  margin-bottom: 3px;
+  text-transform: uppercase;
+}
+.chatbot-memory-text {
+  color: #1e293b;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.chatbot-memory-empty {
+  color: #94a3b8;
+  font-size: 12.5px;
+  line-height: 1.5;
+  margin-top: 8px;
+}
 .chatbot-config-error {
   color: #dc2626;
   font-size: 11.5px;
@@ -1727,6 +1807,8 @@ textarea.chat-inp {
   "price_high": {{ result.price_high }},
   "mape": {{ result.mape | tojson }},
   "model_label": {{ result.model_label | tojson }},
+  "prediction_year": {{ result.prediction_year | tojson }},
+  "prediction_month": {{ result.prediction_month | tojson }},
   "floor_area": {{ form_data.floor_area | int }},
   "storey_range": {{ form_data.storey_range | tojson }},
   "remaining_lease": {{ remaining_lease | tojson }},
@@ -2036,13 +2118,14 @@ if (pForm && subBtn) {
   var ctxEl = document.getElementById('pq-ctx');
   if (!ctxEl) return;
 
-  var ctx    = JSON.parse(ctxEl.textContent || '{}');
-  var isPrem = {{ 'true' if is_premium else 'false' }};
-  var pillsAlreadySeen = {{ 'true' if (g.user and g.user.get('chatbot_pills_seen_predict')) else 'false' }};
-  var currentChatbotFormatPreference = {{ (g.user.get('chatbot_format_preference') if g.user else none) | tojson }};
-  var busy   = false;
-  var analyticsBaseUrl = {{ url_for('analytics') | tojson }};
-  var comparisonBaseUrl = {{ url_for('comparison') | tojson }};
+	  var ctx    = JSON.parse(ctxEl.textContent || '{}');
+	  var isPrem = {{ 'true' if is_premium else 'false' }};
+	  var pillsAlreadySeen = {{ 'true' if (g.user and g.user.get('chatbot_pills_seen_predict')) else 'false' }};
+	  var currentChatbotFormatPreference = {{ (g.user.get('chatbot_format_preference') if g.user else none) | tojson }};
+	  var chatStorageUserId = {{ (g.user.get('id') if g.user else 'guest') | tojson }};
+	  var busy   = false;
+	  var analyticsBaseUrl = {{ url_for('analytics') | tojson }};
+	  var comparisonBaseUrl = {{ url_for('comparison') | tojson }};
 
   function setParamIfValue(params, key, value) {
     if (value === null || value === undefined || value === '') return;
@@ -2243,10 +2326,31 @@ if (pForm && subBtn) {
     '</div>';
   }
 
-  var hist   = [];  /* premium multi-turn history */
-  var preferencePillsShown = false;
+	  var hist   = [];  /* premium multi-turn history */
+	  var preferencePillsShown = false;
 
-  var apiCtx = {
+	  function buildPqChatScopeKey() {
+	    var parts = [
+	      ctx.town || '',
+	      ctx.flat_type || '',
+	      ctx.flat_model || '',
+	      ctx.street_name || '',
+	      ctx.block || '',
+	      ctx.floor_area || '',
+	      ctx.storey_range || '',
+	      ctx.lease_commence || '',
+	      ctx.predicted_price || ''
+	    ];
+	    return encodeURIComponent(parts.join('|')).slice(0, 180) || 'default';
+	  }
+	  var chatMemorySurface = 'predict';
+	  var chatMemoryScopeKey = buildPqChatScopeKey();
+	  function buildPqChatStorageKey() {
+	    return 'propsight:predict:aiChat:v1:' + chatStorageUserId + ':' + chatMemoryScopeKey;
+	  }
+	  var chatStorageKey = buildPqChatStorageKey();
+
+	  var apiCtx = {
     surface: 'prediction',
     filters: { town: ctx.town||'', flat_type: ctx.flat_type||'', street_name: ctx.street_name||'', block: ctx.block||'' },
     chart_data: {
@@ -2261,11 +2365,13 @@ if (pForm && subBtn) {
       price_per_sqm: ctx.price_per_sqm,
       dist_mrt: ctx.dist_mrt,
       dist_school: ctx.dist_school,
-      dist_cbd: ctx.dist_cbd,
-      is_mature_estate: ctx.is_mature_estate,
-      town_avg_price: ctx.town_avg_price,
-      mape: ctx.mape,
-      narrative: ctx.narrative || null,
+	      dist_cbd: ctx.dist_cbd,
+	      is_mature_estate: ctx.is_mature_estate,
+	      town_avg_price: ctx.town_avg_price,
+	      mape: ctx.mape,
+	      prediction_year: ctx.prediction_year,
+	      prediction_month: ctx.prediction_month,
+	      narrative: ctx.narrative || null,
       shap_features: ctx.shap_features || [],
       lease_decay_breakdown: ctx.lease_decay_breakdown || null,
       market_shock: ctx.market_shock || null,
@@ -2281,11 +2387,13 @@ if (pForm && subBtn) {
       storey_midpoint: ctx.storey_midpoint,
       price_per_sqm: ctx.price_per_sqm,
       dist_mrt: ctx.dist_mrt,
-      dist_school: ctx.dist_school,
-      dist_cbd: ctx.dist_cbd,
-      is_mature_estate: ctx.is_mature_estate,
-      lease_commence: ctx.lease_commence,
-      street_name: ctx.street_name || '',
+	      dist_school: ctx.dist_school,
+	      dist_cbd: ctx.dist_cbd,
+	      is_mature_estate: ctx.is_mature_estate,
+	      lease_commence: ctx.lease_commence,
+	      prediction_year: ctx.prediction_year,
+	      prediction_month: ctx.prediction_month,
+	      street_name: ctx.street_name || '',
       block: ctx.block || '',
       predicted_price: ctx.predicted_price
     }
@@ -2324,20 +2432,20 @@ if (pForm && subBtn) {
     var base = 'That is a property-comparison question. Predict explains this single estimate; use the [Comparison page](' +
       buildPredictionComparisonLink() +
       ') to compare flats side by side for best value, location, lease, and the factor you want to prioritise.';
-    return appendWantToGoDeeper(
-      base,
-      'Want to see the historical price trend and demand for this town on the Analytics page?'
-    );
+	    return appendWantToGoDeeper(
+	      base,
+	      'See the historical price trend and demand for this town on the Analytics page?'
+	    );
   }
 
   function buildPredictionAnalyticsRedirect(q) {
     var base = 'That is a market analytics question. Predict explains this single estimate; use the [Analytics page](' +
       buildPredictionAnalyticsLink(pickAnalyticsFocus(q)) +
       ') for price trends, lease decay, district or area context, transaction volume, and historical movement.';
-    return appendWantToGoDeeper(
-      base,
-      'Want to compare this flat against another to see which offers better value per lease year?'
-    );
+	    return appendWantToGoDeeper(
+	      base,
+	      'Compare this flat against another to see which offers better value per lease year?'
+	    );
   }
 
   // Generate dynamic suggestion pills based on SHAP and context
@@ -2446,21 +2554,25 @@ if (pForm && subBtn) {
     var existingPrefRow = document.getElementById('pqPreferenceRow');
     if (existingPrefRow) existingPrefRow.remove();
 
-    appendBubble('user', q);
+	    appendBubble('user', q);
 
-    if (isPropertyComparisonQuestion(q)) {
-      appendBubble('ai', buildPredictionComparisonRedirect(), false, false, false);
-      appendFollowUps();
-      busy = false;
-      sendBtn2.disabled = false;
-      return;
-    }
+	    if (isPropertyComparisonQuestion(q)) {
+	      var comparisonReply = buildPredictionComparisonRedirect();
+	      appendBubble('ai', comparisonReply, false, false, false);
+	      rememberPqTurn(q, comparisonReply);
+	      appendFollowUps();
+	      busy = false;
+	      sendBtn2.disabled = false;
+	      return;
+	    }
 
-    if (isAnalyticsQuestion(q)) {
-      appendBubble('ai', buildPredictionAnalyticsRedirect(q), false, false, false);
-      appendFollowUps();
-      busy = false;
-      sendBtn2.disabled = false;
+	    if (isAnalyticsQuestion(q)) {
+	      var analyticsReply = buildPredictionAnalyticsRedirect(q);
+	      appendBubble('ai', analyticsReply, false, false, false);
+	      rememberPqTurn(q, analyticsReply);
+	      appendFollowUps();
+	      busy = false;
+	      sendBtn2.disabled = false;
       return;
     }
 
@@ -2469,7 +2581,15 @@ if (pForm && subBtn) {
     try {
 	      var endpoint = isPrem ? '/api/ai_chat' : '/api/ai_answer';
 	      var body = isPrem
-	        ? { message: q, history: hist, surface: 'prediction', context: apiCtx, format_preference: currentChatbotFormatPreference }
+	        ? {
+	            message: q,
+	            history: hist,
+	            surface: 'prediction',
+	            memory_surface: chatMemorySurface,
+	            memory_scope_key: chatMemoryScopeKey,
+	            context: apiCtx,
+	            format_preference: currentChatbotFormatPreference
+	          }
 	        : { question: q, surface: 'prediction', context: apiCtx };
 
       var resp = await fetch(endpoint, {
@@ -2495,10 +2615,7 @@ if (pForm && subBtn) {
       var ans = (data.answer || data.reply || data.response || '').trim();
       var displayAns = withPredictionResourceLinks(q, ans);
 
-      if (isPrem && ans) {
-        hist.push({ role: 'user',  text: q });
-        hist.push({ role: 'model', text: ans });
-      }
+	      if (ans) rememberPqTurn(q, ans);
 
       appendBubble('ai', displayAns || 'No response received.', false, false, Boolean(ans));
       appendFollowUps();
@@ -2581,9 +2698,139 @@ if (pForm && subBtn) {
     return wrap;
   }
 
-  function removeEl(el) { if (el && el.parentNode) el.parentNode.removeChild(el); }
+	  function removeEl(el) { if (el && el.parentNode) el.parentNode.removeChild(el); }
 
-  // ── Quote-to-chat: highlight bot text → inject as markdown blockquote ──
+	  function loadStoredPqHistory() {
+	    try {
+	      var raw = localStorage.getItem(chatStorageKey);
+	      var parsed = raw ? JSON.parse(raw) : [];
+	      return normalizePqHistory(parsed);
+	    } catch (e) {
+	      return [];
+	    }
+	  }
+
+	  function normalizePqHistory(history) {
+	    return Array.isArray(history)
+	      ? history.filter(function (h) { return h && (h.role === 'user' || h.role === 'model') && h.text; })
+	      : [];
+	  }
+
+	  async function loadAccountPqHistory() {
+	    if (!isPrem) return [];
+	    try {
+	      var params = new URLSearchParams({
+	        surface: chatMemorySurface,
+	        scope_key: chatMemoryScopeKey
+	      });
+	      var resp = await fetch('/api/ai_chat/memory?' + params.toString(), {
+	        credentials: 'same-origin'
+	      });
+	      if (!resp.ok) return [];
+	      var data = await resp.json().catch(function () { return {}; });
+	      return normalizePqHistory(data.history);
+	    } catch (e) {
+	      return [];
+	    }
+	  }
+
+	  function saveAccountPqHistory() {
+	    if (!isPrem) return;
+	    fetch('/api/ai_chat/memory', {
+	      method: 'POST',
+	      headers: { 'Content-Type': 'application/json' },
+	      credentials: 'same-origin',
+	      body: JSON.stringify({
+	        surface: chatMemorySurface,
+	        scope_key: chatMemoryScopeKey,
+	        history: hist
+	      })
+	    }).catch(function () {});
+	  }
+
+	  function resetAccountPqHistory() {
+	    if (!isPrem) return;
+	    fetch('/api/ai_chat/memory', {
+	      method: 'DELETE',
+	      headers: { 'Content-Type': 'application/json' },
+	      credentials: 'same-origin',
+	      body: JSON.stringify({
+	        surface: chatMemorySurface,
+	        scope_key: chatMemoryScopeKey
+	      })
+	    }).catch(function () {});
+	  }
+
+	  function saveStoredPqHistory() {
+	    try { localStorage.setItem(chatStorageKey, JSON.stringify(hist)); } catch (e) {}
+	    saveAccountPqHistory();
+	  }
+
+	  function rememberPqTurn(userText, modelText) {
+	    if (!isPrem || !modelText) return;
+	    hist.push({ role: 'user', text: userText });
+	    hist.push({ role: 'model', text: modelText });
+	    saveStoredPqHistory();
+	  }
+
+	  function buildPqMemoryHtml() {
+	    if (!hist.length) {
+	      return '<div class="chatbot-memory-empty">No chat memory yet. Ask a question to start one.</div>';
+	    }
+	    return '<div class="chatbot-memory-list">' + hist.slice(-20).map(function (item) {
+	      var role = item.role === 'user' ? 'You' : 'AI';
+	      var text = escapePqText(item.text).replace(/\n/g, '<br>');
+	      return '<div class="chatbot-memory-turn">'
+	        + '<div class="chatbot-memory-role">' + role + '</div>'
+	        + '<div class="chatbot-memory-text">' + text + '</div>'
+	        + '</div>';
+	    }).join('') + '</div>';
+	  }
+
+	  function appendPqMemoryView() {
+	    var existing = document.getElementById('pqMemoryView');
+	    if (existing) existing.remove();
+	    var wrap = document.createElement('div');
+	    wrap.id = 'pqMemoryView';
+	    wrap.className = 'chatbot-config-card';
+	    wrap.innerHTML = ''
+	      + '<div class="chatbot-config-header">'
+	      +   '<span class="chatbot-config-icon"><i class="bi bi-clock-history"></i></span>'
+	      +   '<div>'
+	      +     '<div class="chatbot-config-title">Chat Memory</div>'
+	      +     '<div class="chatbot-config-sub">What this chatbot will send as previous context</div>'
+	      +   '</div>'
+	      + '</div>'
+	      + buildPqMemoryHtml()
+	      + '<div class="chatbot-config-actions" style="margin-top:12px;">'
+	      +   '<button type="button" class="chatbot-config-cancel" id="pqMemoryClose">Close</button>'
+	      + '</div>';
+	    thread.appendChild(wrap);
+	    wrap.querySelector('#pqMemoryClose').addEventListener('click', function () { wrap.remove(); });
+	    thread.scrollTop = thread.scrollHeight;
+	  }
+
+	  function renderPqRestoredHistory() {
+	    if (!hist.length) return;
+	    var initPills = document.getElementById('initialSuggestions');
+	    if (initPills) initPills.style.display = 'none';
+	    hist.forEach(function (h) {
+	      appendBubble(h.role === 'user' ? 'user' : 'ai', h.text, false, false, h.role === 'model');
+	    });
+	  }
+
+	  async function restorePqChatHistory() {
+	    if (!isPrem) return;
+	    var accountHistory = await loadAccountPqHistory();
+	    hist = accountHistory.length ? accountHistory : loadStoredPqHistory();
+	    if (!hist.length) return;
+	    try { localStorage.setItem(chatStorageKey, JSON.stringify(hist)); } catch (e) {}
+	    renderPqRestoredHistory();
+	  }
+
+	  restorePqChatHistory();
+
+	  // ── Quote-to-chat: highlight bot text → inject as markdown blockquote ──
   function pqAutoResize() {
     inp.style.height = 'auto';
     inp.style.height = Math.min(inp.scrollHeight, 160) + 'px';
@@ -2740,9 +2987,23 @@ if (pForm && subBtn) {
 	    return data;
 	  }
 
-  function maybeShowPreferencePills() {
-    if (!isPrem || !thread) return;
-    var existing = document.getElementById('pqPreferenceRow');
+	  function resetPqChatHistory() {
+	    hist = [];
+	    try { localStorage.removeItem(chatStorageKey); } catch (e) {}
+	    resetAccountPqHistory();
+	    if (typeof pqHideQuoteBtn === 'function') pqHideQuoteBtn();
+	    if (thread) thread.innerHTML = '';
+	    var initPills = document.getElementById('initialSuggestions');
+	    if (initPills) {
+	      initPills.style.display = '';
+	      buildSuggestionPills();
+	    }
+	    preferencePillsShown = false;
+	  }
+
+	  function maybeShowPreferencePills() {
+	    if (!isPrem || !thread) return;
+	    var existing = document.getElementById('pqPreferenceRow');
     if (existing) existing.remove();
     preferencePillsShown = true;
     var wrap = document.createElement('div');
@@ -2755,15 +3016,23 @@ if (pForm && subBtn) {
       +     '<div class="chatbot-config-title">Configure Chatbot</div>'
       +     '<div class="chatbot-config-sub">Personalise how the AI replies to you</div>'
       +   '</div>'
-      + '</div>'
-      + '<div class="chatbot-config-section">'
-      +   '<div class="chatbot-config-label">Reply Style</div>'
-      +   '<div class="chatbot-config-options" id="pqStyleOptions">'
-      +     '<button type="button" class="chatbot-config-opt active" data-val="default">Default</button>'
-      +     '<button type="button" class="chatbot-config-opt" data-val="detailed">More Detailed</button>'
-      +     '<button type="button" class="chatbot-config-opt" data-val="bullets">Bullet Points</button>'
-      +   '</div>'
-      + '</div>'
+	      + '</div>'
+	      + '<div class="chatbot-config-section">'
+	      +   '<div class="chatbot-config-label">Reply Style</div>'
+	      +   '<div class="chatbot-config-options" id="pqStyleOptions">'
+	      +     '<button type="button" class="chatbot-config-opt active" data-val="default">Default</button>'
+	      +     '<button type="button" class="chatbot-config-opt" data-val="detailed">More Detailed</button>'
+	      +     '<button type="button" class="chatbot-config-opt" data-val="bullets">Bullet Points</button>'
+	      +   '</div>'
+	      + '</div>'
+	      + '<div class="chatbot-config-section chatbot-config-reset-section">'
+	      +   '<div class="chatbot-config-label">Chat History</div>'
+	      +   '<div class="chatbot-config-history-actions">'
+	      +     '<button type="button" class="chatbot-config-secondary" id="pqConfigViewMemory">View Chat Memory</button>'
+	      +     '<button type="button" class="chatbot-config-reset" id="pqConfigReset">Reset Chat History</button>'
+	      +   '</div>'
+	      +   '<div class="chatbot-config-hint">Clears this conversation on this device and restores starter prompts.</div>'
+	      + '</div>'
 	      + '<div class="chatbot-config-actions">'
 	      +   '<button type="button" class="chatbot-config-apply" id="pqConfigApply">Apply</button>'
 	      +   '<button type="button" class="chatbot-config-cancel" id="pqConfigCancel">Cancel</button>'
@@ -2792,12 +3061,19 @@ if (pForm && subBtn) {
 	        showPqConfigError(wrap, 'Could not save this setting. Please try again.');
 	      }
 	    });
-    wrap.querySelector('#pqConfigCancel').addEventListener('click', function () {
-      wrap.remove();
-    });
-    thread.appendChild(wrap);
-    thread.scrollTop = thread.scrollHeight;
-  }
+	    wrap.querySelector('#pqConfigCancel').addEventListener('click', function () {
+	      wrap.remove();
+	    });
+	    wrap.querySelector('#pqConfigReset').addEventListener('click', function () {
+	      if (!confirm('Reset this chat history?')) return;
+	      resetPqChatHistory();
+	    });
+	    wrap.querySelector('#pqConfigViewMemory').addEventListener('click', function () {
+	      appendPqMemoryView();
+	    });
+	    thread.appendChild(wrap);
+	    thread.scrollTop = thread.scrollHeight;
+	  }
 
   var configBtn = document.getElementById('pqConfigBtn');
   if (configBtn) {
