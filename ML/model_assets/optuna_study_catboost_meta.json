@@ -37,7 +37,7 @@
     "town_yoy_appreciation_lag1",
     "year"
   ],
-  "n_train_rows": 255125,
+  "n_train_rows": 256784,
   "optuna_objective": "rmse",
-  "timestamp": "2026-04-29T14:25:35Z"
+  "timestamp": "2026-05-06T06:44:00Z"
 }
