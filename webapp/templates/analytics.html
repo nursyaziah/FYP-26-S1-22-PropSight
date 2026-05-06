@@ -383,15 +383,24 @@
     .ai-chat-input-area {
         display: flex; gap: 0.4rem; padding: 0.6rem 0.75rem;
         border-top: 1px solid rgba(15,23,42,0.04); background: #ffffff;
+        align-items: flex-end;
     }
-    .ai-chat-input-area input {
+    .ai-chat-input-area input,
+    .ai-chat-input-area textarea {
         border-radius: 10px;
         font-size: 0.84rem;
         background: #f8fafc;
         border: 1px solid transparent;
-        transition: all 0.2s ease;
+        transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
     }
-    .ai-chat-input-area input:focus {
+    .ai-chat-input-area textarea {
+        resize: none;
+        max-height: 160px;
+        line-height: 1.45;
+        overflow-y: auto;
+    }
+    .ai-chat-input-area input:focus,
+    .ai-chat-input-area textarea:focus {
         background: #ffffff;
         border: 1px solid #2563eb;
         box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
@@ -403,6 +412,41 @@
         border-color: #0f172a;
         color: #ffffff;
         transition: all 0.2s ease;
+        flex-shrink: 0;
+    }
+    .ai-chat-quote-btn {
+        position: fixed;
+        z-index: 10000;
+        display: none;
+        background: #0f172a;
+        color: #ffffff;
+        border: none;
+        border-radius: 999px;
+        padding: 4px 12px;
+        font-size: 0.72rem;
+        font-weight: 500;
+        cursor: pointer;
+        box-shadow: 0 4px 12px rgba(15,23,42,0.18);
+        transition: background 0.15s ease, transform 0.15s ease;
+    }
+    .ai-chat-quote-btn:hover {
+        background: #2563eb;
+        transform: translateY(-1px);
+    }
+    .ai-chat-quote-btn .bi {
+        margin-right: 4px;
+        font-size: 0.78rem;
+        vertical-align: -1px;
+    }
+    .ai-chat-user .ai-chat-quote {
+        margin: 0 0 8px;
+        padding: 4px 10px;
+        border-left: 3px solid rgba(255,255,255,0.45);
+        color: rgba(255,255,255,0.78);
+        font-size: 0.78rem;
+        line-height: 1.45;
+        font-style: italic;
+        word-break: break-word;
     }
     .ai-chat-input-area button:hover {
         background: #2563eb;
@@ -1941,8 +1985,8 @@
         </div>
         <div id="aiChatSuggestions" class="ai-chat-suggestions"></div>
         <div class="ai-chat-input-area">
-            <input id="aiChatInput" type="text" class="form-control form-control-sm"
-                   placeholder="Ask about prices, trends, area context..." maxlength="500">
+            <textarea id="aiChatInput" rows="1" class="form-control form-control-sm"
+                      placeholder="Ask about prices, trends, area context..." maxlength="2000"></textarea>
             <button id="aiChatSend" class="btn btn-primary btn-sm"><i class="bi bi-send-fill"></i></button>
         </div>
     </div>
@@ -4673,11 +4717,29 @@ if (IS_PREMIUM) {
       renderSuggestions(buildChatStarters());
     }
 
+    function renderUserBubbleHtml(text) {
+        const raw = String(text || '');
+        const lines = raw.split('\n');
+        const quoteLines = [];
+        let i = 0;
+        while (i < lines.length && /^>\s?/.test(lines[i])) {
+            quoteLines.push(lines[i].replace(/^>\s?/, ''));
+            i++;
+        }
+        // Trim a single blank separator line between quote and body
+        if (i < lines.length && lines[i].trim() === '') i++;
+        const restText = lines.slice(i).join('\n');
+        const restHtml = escapeHtml(restText).replace(/\n/g, '<br>');
+        if (!quoteLines.length) return restHtml;
+        const quoteHtml = escapeHtml(quoteLines.join('\n')).replace(/\n/g, '<br>');
+        return '<div class="ai-chat-quote">' + quoteHtml + '</div>' + restHtml;
+    }
+
     function appendBubble(text, role, showDisclaimer) {
         const bubble = document.createElement('div');
         bubble.className = 'ai-chat-bubble ' + (role === 'user' ? 'ai-chat-user' : 'ai-chat-bot');
         bubble.innerHTML = (role === 'user')
-            ? escapeHtml(text).replace(/\n/g, '<br>')
+            ? renderUserBubbleHtml(text)
             : renderAiMarkdown(text);
         if (showDisclaimer && role !== 'user') {
             const note = document.createElement('div');
@@ -4781,11 +4843,119 @@ if (IS_PREMIUM) {
 
     restoreChatHistory();
 
+    // ── Quote-to-chat: highlight bot text → inject as markdown blockquote ──
+    const quoteBtn = document.createElement('button');
+    quoteBtn.type = 'button';
+    quoteBtn.id = 'aiChatQuoteBtn';
+    quoteBtn.className = 'ai-chat-quote-btn';
+    quoteBtn.innerHTML = '<i class="bi bi-quote"></i>Quote';
+    document.body.appendChild(quoteBtn);
+
+    let pendingQuoteText = '';
+
+    function autoResizeChatInput() {
+        chatInput.style.height = 'auto';
+        const next = Math.min(chatInput.scrollHeight, 160);
+        chatInput.style.height = next + 'px';
+    }
+
+    function hideQuoteBtn() {
+        if (quoteBtn.style.display !== 'none') quoteBtn.style.display = 'none';
+        pendingQuoteText = '';
+    }
+
+    function formatQuote(text) {
+        const trimmed = String(text || '').replace(/\s+$/, '');
+        if (!trimmed) return '';
+        return trimmed.split('\n').map(l => '> ' + l.trim()).join('\n') + '\n\n';
+    }
+
+    function injectQuoteIntoInput(text) {
+        const quote = formatQuote(text);
+        if (!quote) return;
+        const cur = chatInput.value || '';
+        // One active quote at a time: strip any existing leading quote block
+        const stripped = cur.replace(/^(?:>[^\n]*\n)+\n?/, '');
+        chatInput.value = quote + stripped;
+        chatInput.focus();
+        const caret = quote.length;
+        try { chatInput.setSelectionRange(caret, caret); } catch (e) {}
+        autoResizeChatInput();
+    }
+
+    function getSelectionInsideBotBubble() {
+        const sel = window.getSelection();
+        if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
+        const text = sel.toString().trim();
+        if (!text) return null;
+        const range = sel.getRangeAt(0);
+        const startEl = range.startContainer.nodeType === 1
+            ? range.startContainer : range.startContainer.parentElement;
+        const endEl = range.endContainer.nodeType === 1
+            ? range.endContainer : range.endContainer.parentElement;
+        if (!startEl || !endEl) return null;
+        const startBubble = startEl.closest('.ai-chat-bot');
+        const endBubble = endEl.closest('.ai-chat-bot');
+        if (!startBubble || startBubble !== endBubble) return null;
+        if (startBubble.classList.contains('ai-chat-typing')) return null;
+        return { text, range };
+    }
+
+    function positionQuoteBtn(rect) {
+        const btnRect = quoteBtn.getBoundingClientRect();
+        let top = rect.top - btnRect.height - 6;
+        if (top < 8) top = rect.bottom + 6;
+        let left = rect.left + (rect.width / 2) - (btnRect.width / 2);
+        left = Math.max(8, Math.min(left, window.innerWidth - btnRect.width - 8));
+        quoteBtn.style.top = top + 'px';
+        quoteBtn.style.left = left + 'px';
+    }
+
+    function maybeShowQuoteBtn() {
+        const sel = getSelectionInsideBotBubble();
+        if (!sel) { hideQuoteBtn(); return; }
+        pendingQuoteText = sel.text;
+        const rect = sel.range.getBoundingClientRect();
+        if (!rect || (rect.width === 0 && rect.height === 0)) { hideQuoteBtn(); return; }
+        quoteBtn.style.display = 'inline-flex';
+        positionQuoteBtn(rect);
+    }
+
+    chatMessages.addEventListener('mouseup', () => setTimeout(maybeShowQuoteBtn, 0));
+    chatMessages.addEventListener('touchend', () => setTimeout(maybeShowQuoteBtn, 0));
+    chatMessages.addEventListener('scroll', hideQuoteBtn, { passive: true });
+    document.addEventListener('selectionchange', () => {
+        const sel = window.getSelection();
+        if (!sel || sel.isCollapsed) hideQuoteBtn();
+    });
+    document.addEventListener('mousedown', e => {
+        if (e.target === quoteBtn || quoteBtn.contains(e.target)) return;
+        const inBot = e.target.closest && e.target.closest('.ai-chat-bot');
+        if (!inBot) hideQuoteBtn();
+    });
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape' && quoteBtn.style.display !== 'none') hideQuoteBtn();
+    });
+    // Prevent the browser from clearing the selection on mousedown of the button
+    quoteBtn.addEventListener('mousedown', e => e.preventDefault());
+    quoteBtn.addEventListener('click', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        const text = pendingQuoteText;
+        hideQuoteBtn();
+        try { window.getSelection().removeAllRanges(); } catch (_) {}
+        if (text) injectQuoteIntoInput(text);
+    });
+
+    chatInput.addEventListener('input', autoResizeChatInput);
+    autoResizeChatInput();
+
     async function sendChatMessage() {
         const text = chatInput.value.trim();
         if (!text || chatBusy) return;
         chatBusy = true;
         chatInput.value = '';
+        autoResizeChatInput();
         chatSendBtn.disabled = true;
         const existingPrefRow = document.getElementById('analyticsAiPreferenceRow');
         if (existingPrefRow) existingPrefRow.remove();

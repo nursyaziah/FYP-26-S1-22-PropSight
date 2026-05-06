@@ -340,8 +340,11 @@ GEMINI_MODEL = "gemini-2.5-flash"
 GEMINI_FALLBACK_MODEL = "gemini-2.5-flash-lite"
 GEMINI_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 GEMINI_FALLBACK_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_FALLBACK_MODEL}:generateContent"
+GEMINI_THINKING_BUDGET = 0
+GEMINI_RETRY_STATUS_CODES = {429, 500, 503, 504}
 GENERAL_DAILY_AI_ANSWER_LIMIT = 3
 AI_ANSWER_MAX_TOKENS = 512
+AI_CHAT_MAX_TOKENS = 2048
 AI_CHAT_HISTORY_MESSAGE_LIMIT = 20
 AI_CHAT_HISTORY_TURN_CHAR_LIMIT = 2000
 AI_CHAT_HISTORY_TRUNCATION_SUFFIX = "…[truncated]"
@@ -1602,25 +1605,53 @@ def _gemini_request(url, body_dict, timeout=25):
     return text
 
 
+def _gemini_generation_config(max_tokens, temperature, json_mode=False):
+    config = {
+        "maxOutputTokens": max_tokens,
+        "temperature": temperature,
+        "thinkingConfig": {"thinkingBudget": GEMINI_THINKING_BUDGET},
+    }
+    if json_mode:
+        config["response_mime_type"] = "application/json"
+    return config
+
+
+def _is_retryable_gemini_error(exc):
+    if isinstance(exc, error.HTTPError):
+        return exc.code in GEMINI_RETRY_STATUS_CODES
+    return isinstance(exc, (error.URLError, SocketTimeout, OSError))
+
+
+def _call_gemini_endpoint(endpoint, payload, timeout, retries=1):
+    model_name = endpoint.split('/models/')[1].split(':')[0]
+    for attempt in range(retries + 1):
+        try:
+            return _gemini_request(f"{endpoint}?key={GEMINI_API_KEY}", payload, timeout=timeout)
+        except Exception as exc:
+            if attempt < retries and _is_retryable_gemini_error(exc):
+                delay = 0.7 * (attempt + 1)
+                print(f"[Gemini] {model_name} transient failure: {exc}; retrying in {delay:.1f}s", flush=True)
+                _time_mod.sleep(delay)
+                continue
+            raise
+
+
 def _call_gemini(prompt, max_tokens=1024, images=None, json_mode=False, temperature=0.3):
     """call Google Gemini API and return text response, or None on error.
-    Falls back to Gemini 2.5 Flash if the primary model fails (e.g. rate limit)."""
+    Falls back to the configured lightweight model if the primary model fails."""
     if not GEMINI_API_KEY:
         return None
     parts = [{"text": prompt}]
     if images:
         for img_b64 in images:
             parts.append({"inline_data": {"mime_type": "image/png", "data": img_b64}})
-    generation_config = {"maxOutputTokens": max_tokens, "temperature": temperature}
-    if json_mode:
-        generation_config["response_mime_type"] = "application/json"
     payload = {
         "contents": [{"parts": parts}],
-        "generationConfig": generation_config,
+        "generationConfig": _gemini_generation_config(max_tokens, temperature, json_mode=json_mode),
     }
     for endpoint in (GEMINI_ENDPOINT, GEMINI_FALLBACK_ENDPOINT):
         try:
-            return _gemini_request(f"{endpoint}?key={GEMINI_API_KEY}", payload, timeout=25)
+            return _call_gemini_endpoint(endpoint, payload, timeout=25)
         except Exception as exc:
             print(f"[Gemini] {endpoint.split('/models/')[1].split(':')[0]} failed: {exc}", flush=True)
             continue
@@ -1629,16 +1660,16 @@ def _call_gemini(prompt, max_tokens=1024, images=None, json_mode=False, temperat
 
 def _call_gemini_chat(contents, max_tokens=1024, temperature=0.3):
     """Call Gemini with multi-turn conversation history and return text response.
-    Falls back to Gemini 2.5 Flash if the primary model fails (e.g. rate limit)."""
+    Falls back to the configured lightweight model if the primary model fails."""
     if not GEMINI_API_KEY:
         return None
     payload = {
         "contents": contents,
-        "generationConfig": {"maxOutputTokens": max_tokens, "temperature": temperature},
+        "generationConfig": _gemini_generation_config(max_tokens, temperature),
     }
     for endpoint in (GEMINI_ENDPOINT, GEMINI_FALLBACK_ENDPOINT):
         try:
-            return _gemini_request(f"{endpoint}?key={GEMINI_API_KEY}", payload, timeout=30)
+            return _call_gemini_endpoint(endpoint, payload, timeout=30)
         except Exception as exc:
             print(f"[Gemini] {endpoint.split('/models/')[1].split(':')[0]} failed: {exc}", flush=True)
             continue
@@ -7454,7 +7485,7 @@ Rules:
 - If the "THE USER'S OWN FLAT" block is populated, tie the answer specifically to that flat.
 - If no specific data supports a point, do not make the point.
 - If the user is on the comparison page, explain panel differences objectively using the supplied comparison factors. If they ask for best value, best location, or which factor to prioritise, identify the panel that best matches that criterion and explain the tradeoff. If no priority is stated, compare value, location, lease, and size without declaring an overall winner. Do not recommend which property to buy, sell, hold, or prefer overall.
-- If the user is on the prediction page and asks for broad market trends, town/street analytics, transaction volume, historical movement, lease decay charts, or district/area comparison, direct them to the Analytics page. Prediction explains one flat.
+- If the user is on the prediction page and asks for broad market trends, town/street analytics, transaction volume, historical movement, lease decay charts, or district/area comparison, direct them to the Analytics page. Prediction explains one flat. However, if the user is asking what the visible market note, market shock, short-term market movement, or 1-month vs 3-month benchmark means for their estimate, answer directly using chart_data.market_shock instead of redirecting.
 - If the user asks "what will my flat be worth in X years?" or any forward-looking value question, you MUST run the scenario calculation below — do NOT just say "depends on many market factors" or punt straight to the 5-Year Forecast.
   Calculation steps (use my_flat.predicted_price; if predicted_price is missing, then and only then punt to the 5-Year Forecast):
   (1) Anchor on my_flat.predicted_price as the current value.
@@ -7743,7 +7774,7 @@ Rules:
 - Always connect trends to the user's home value: "this means your flat is likely worth more/less because..."
 - If the "THE USER'S OWN FLAT" block above is populated, tie answers specifically to that flat. Refer to it as "your flat".
 - On the comparison page, explain how the compared panels differ and how those factors may push estimates up or down. If the user asks for best value, best location, or which factor to prioritise, identify the panel that best matches that criterion and explain the tradeoff. If no priority is stated, compare value, location, lease, and size without declaring an overall winner. Do not recommend a transaction decision.
-- On the prediction page, route broad market trend, town/street analytics, transaction volume, lease decay chart, and district/area questions to the Analytics page; Prediction explains one flat's estimate.
+- On the prediction page, route broad market trend, town/street analytics, transaction volume, lease decay chart, and district/area questions to the Analytics page; Prediction explains one flat's estimate. However, if the user is asking what the visible market note, market shock, short-term market movement, or 1-month vs 3-month benchmark means for their estimate, answer directly using chart_data.market_shock instead of redirecting.
 - If the user asks "what will my flat be worth in X years?" or any forward-looking value question, you MUST run the scenario calculation below — do NOT just say "depends on many market factors" or punt straight to the 5-Year Forecast.
   Calculation steps (use my_flat.predicted_price; if predicted_price is missing, then and only then punt to the 5-Year Forecast):
   (1) Anchor on my_flat.predicted_price as the current value.
@@ -7946,7 +7977,7 @@ def api_ai_chat():
         contents.append({"role": "user", "parts": [{"text": _wrap_ai_user_question(message)}]})
 
     temp = 0.15 if surface == "prediction" else 0.3
-    text = _call_gemini_chat(contents, max_tokens=1024, temperature=temp)
+    text = _call_gemini_chat(contents, max_tokens=AI_CHAT_MAX_TOKENS, temperature=temp)
     if not text:
         return jsonify({"error": "AI temporarily unavailable"}), 503
 
