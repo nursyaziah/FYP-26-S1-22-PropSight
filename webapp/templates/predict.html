@@ -1911,6 +1911,7 @@ if (pForm && subBtn) {
 
   var ctx    = JSON.parse(ctxEl.textContent || '{}');
   var isPrem = {{ 'true' if is_premium else 'false' }};
+  var pillsAlreadySeen = {{ 'true' if (g.user and g.user.get('chatbot_pills_seen_predict')) else 'false' }};
   var busy   = false;
   var analyticsBaseUrl = {{ url_for('analytics') | tojson }};
   var comparisonBaseUrl = {{ url_for('comparison') | tojson }};
@@ -2357,7 +2358,6 @@ if (pForm && subBtn) {
       var ans = (data.answer || data.reply || data.response || '').trim();
       var displayAns = withPredictionResourceLinks(q, ans);
 
-      var wasEmptyBeforePush = hist.length === 0;
       if (isPrem && ans) {
         hist.push({ role: 'user',  text: q });
         hist.push({ role: 'model', text: ans });
@@ -2365,7 +2365,7 @@ if (pForm && subBtn) {
 
       appendBubble('ai', displayAns || 'No response received.', false, false, Boolean(ans));
       appendFollowUps();
-      if (isPrem && ans && wasEmptyBeforePush) {
+      if (isPrem && ans && !pillsAlreadySeen) {
         maybeShowPreferencePills();
       }
 
@@ -2452,8 +2452,20 @@ if (pForm && subBtn) {
     thread.scrollTop = thread.scrollHeight;
   }
 
+  function postChatbotPreference(format) {
+    var payload = { page: 'predict' };
+    if (format !== undefined) payload.format = format;
+    fetch('/api/ai_chat/preferences', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      credentials: 'same-origin'
+    }).catch(function () { /* best-effort; pills won't reappear in this tab anyway */ });
+    pillsAlreadySeen = true;
+  }
+
   function maybeShowPreferencePills() {
-    if (!isPrem || preferencePillsShown || !thread) return;
+    if (!isPrem || preferencePillsShown || pillsAlreadySeen || !thread) return;
     preferencePillsShown = true;
     var wrap = document.createElement('div');
     wrap.id = 'pqPreferenceRow';
@@ -2471,9 +2483,11 @@ if (pForm && subBtn) {
       var kind = btn.getAttribute('data-pref');
       wrap.remove();
       if (kind === 'more') {
-        window.sendPQ('From now on, please give me more detail in your replies.');
+        postChatbotPreference('detailed');
       } else if (kind === 'bullets') {
-        window.sendPQ('From now on, please format your replies as short bullet points.');
+        postChatbotPreference('bullets');
+      } else {
+        postChatbotPreference();
       }
     });
     thread.appendChild(wrap);

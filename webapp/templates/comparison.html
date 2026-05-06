@@ -1727,6 +1727,7 @@ var comparisonAiLimitNote = document.getElementById('comparisonAiLimitNote');
 var comparisonAiStorageKey = 'propsight:comparison:aiChat:v1:' + {{ g.user.get('id')|tojson }};
 var AI_GENERATED_DISCLAIMER_TEXT = 'AI-generated explanation based on the comparison data. May contain errors.';
 var comparisonAiPreferenceShown = false;
+var comparisonAiPillsAlreadySeen = {{ 'true' if (g.user and g.user.get('chatbot_pills_seen_comparison')) else 'false' }};
 
 function escapeComparisonText(s) {
     return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -1957,8 +1958,20 @@ function renderComparisonStarters() {
     }).join('');
 }
 
+function postComparisonChatbotPreference(format) {
+    var payload = { page: 'comparison' };
+    if (format !== undefined) payload.format = format;
+    fetch('/api/ai_chat/preferences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        credentials: 'same-origin'
+    }).catch(function() { /* best-effort; pills won't reappear in this tab anyway */ });
+    comparisonAiPillsAlreadySeen = true;
+}
+
 function maybeShowComparisonAiPreferences() {
-    if (!IS_PREMIUM || comparisonAiPreferenceShown || !comparisonAiThread) return;
+    if (!IS_PREMIUM || comparisonAiPreferenceShown || comparisonAiPillsAlreadySeen || !comparisonAiThread) return;
     comparisonAiPreferenceShown = true;
     var wrap = document.createElement('div');
     wrap.id = 'comparisonAiPreferenceRow';
@@ -1976,9 +1989,11 @@ function maybeShowComparisonAiPreferences() {
         var kind = btn.getAttribute('data-pref');
         wrap.remove();
         if (kind === 'more') {
-            window.sendComparisonAI('From now on, please give me more detail in your replies.');
+            postComparisonChatbotPreference('detailed');
         } else if (kind === 'bullets') {
-            window.sendComparisonAI('From now on, please format your replies as short bullet points.');
+            postComparisonChatbotPreference('bullets');
+        } else {
+            postComparisonChatbotPreference();
         }
     });
     comparisonAiThread.appendChild(wrap);
@@ -2071,14 +2086,13 @@ window.sendComparisonAI = async function(text) {
         if (isLikelyIncompleteComparisonReply(answer)) {
             appendComparisonBubble('ai', 'The AI response was cut off before it finished. Please try that question again in a moment.', true);
         } else {
-            var wasEmptyBeforePush = comparisonAiHistory.length === 0;
             if (IS_PREMIUM && answer) {
                 comparisonAiHistory.push({ role: 'user', text: q });
                 comparisonAiHistory.push({ role: 'model', text: answer });
                 saveStoredComparisonAiHistory();
             }
             appendComparisonBubble('ai', answer || 'No response received.', false, false, Boolean(answer));
-            if (IS_PREMIUM && answer && wasEmptyBeforePush) {
+            if (IS_PREMIUM && answer && !comparisonAiPillsAlreadySeen) {
                 maybeShowComparisonAiPreferences();
             }
         }
