@@ -1093,6 +1093,92 @@
     }
     .ai-fallback-inline a { color: #2563eb; font-weight: 600; text-decoration: none; }
     .ai-fallback-inline a:hover { text-decoration: underline; }
+
+    /* ===== CONFIGURE CHATBOT CARD ===== */
+    .chatbot-config-card {
+      background: #fff;
+      border: 1px solid rgba(37,99,235,0.14);
+      border-radius: 14px;
+      padding: 16px 18px 14px;
+      margin: 4px 0 6px;
+      box-shadow: 0 4px 16px rgba(15,23,42,0.07);
+      max-width: 92%;
+    }
+    .chatbot-config-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .chatbot-config-icon {
+      width: 32px; height: 32px;
+      background: rgba(37,99,235,0.08);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      color: #2563eb; font-size: 15px; flex-shrink: 0;
+    }
+    .chatbot-config-title {
+      font-size: 13.5px; font-weight: 700; color: #0f172a; line-height: 1.2;
+    }
+    .chatbot-config-sub {
+      font-size: 11.5px; color: #64748b; margin-top: 1px;
+    }
+    .chatbot-config-section { margin-bottom: 14px; }
+    .chatbot-config-label {
+      font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.07em; color: #94a3b8; margin-bottom: 7px;
+    }
+    .chatbot-config-options { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chatbot-config-opt {
+      background: #f8fafc;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 50px;
+      padding: 5px 14px;
+      font-size: 12.5px; font-weight: 600; color: #374151;
+      cursor: pointer; transition: all 0.18s;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    .chatbot-config-opt:hover {
+      border-color: #93c5fd; color: #2563eb;
+      background: rgba(37,99,235,0.04);
+    }
+    .chatbot-config-opt.active {
+      background: rgba(37,99,235,0.08);
+      border-color: #2563eb; color: #2563eb;
+    }
+    .chatbot-config-actions {
+      display: flex; align-items: center; gap: 10px; margin-top: 4px;
+    }
+    .chatbot-config-apply {
+      background: #0f172a; color: #fff;
+      border: none; border-radius: 50px;
+      padding: 7px 20px; font-size: 12.5px; font-weight: 700;
+      cursor: pointer; transition: background 0.18s;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    .chatbot-config-apply:hover { background: #2563eb; }
+    .chatbot-config-cancel {
+      background: none; border: none;
+      color: #94a3b8; font-size: 12px; cursor: pointer;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    .chatbot-config-cancel:hover { color: #475569; }
+    .chatbot-config-error {
+      color: #dc2626;
+      font-size: 11.5px;
+      margin-top: 8px;
+    }
+    .chatbot-config-gear-btn {
+      background: #f8fafc; border: 1.5px solid #e2e8f0;
+      border-radius: 8px; padding: 6px 9px;
+      color: #64748b; cursor: pointer; font-size: 15px;
+      transition: all 0.18s; flex-shrink: 0;
+    }
+    .chatbot-config-gear-btn:hover {
+      border-color: #2563eb; color: #2563eb;
+      background: rgba(37,99,235,0.04);
+    }
+    #aiChatMessages .chatbot-config-card { max-width: 96%; }
 </style>
 {% endblock %}
 
@@ -1950,6 +2036,7 @@
                 <span class="ai-chat-premium-badge">PREMIUM</span>
             </div>
             <div class="d-flex align-items-center gap-2">
+                <button id="aiChatConfigureExpanded" class="ai-chat-header-btn" title="Configure chatbot"><i class="bi bi-sliders"></i></button>
                 <button id="aiChatCollapse" class="ai-chat-header-btn" title="Collapse back to widget"><i class="bi bi-fullscreen-exit"></i></button>
             </div>
         </div>
@@ -1974,6 +2061,7 @@
                 <span class="badge bg-primary bg-opacity-10 text-primary" style="font-size:0.65rem;">PREMIUM</span>
             </div>
             <div class="d-flex align-items-center gap-2">
+                <button id="aiChatConfigure" class="ai-chat-header-btn" title="Configure chatbot"><i class="bi bi-sliders"></i></button>
                 <button id="aiChatExpand" class="ai-chat-header-btn" title="Expand"><i class="bi bi-arrows-fullscreen"></i></button>
                 <button id="aiChatClose" class="ai-chat-header-btn" title="Close"><i class="bi bi-x-lg"></i></button>
             </div>
@@ -4598,6 +4686,7 @@ if (IS_PREMIUM) {
     let isExpanded  = false;
     let preferencePillsShown = false;
     let pillsAlreadySeen = {{ 'true' if (g.user and g.user.get('chatbot_pills_seen_analytics')) else 'false' }};
+    let currentChatbotFormatPreference = {{ (g.user.get('chatbot_format_preference') if g.user else none) | tojson }};
     const chatStorageKey = 'propsight:analytics:aiChat:v1:' + {{ g.user.get('id')|tojson }};
 
     const chatWidget   = document.getElementById('aiChatWidget');
@@ -4700,6 +4789,17 @@ if (IS_PREMIUM) {
     chatExpandBtn.addEventListener('click', expandChat);
     chatCollapseBtn.addEventListener('click', collapseChat);
 
+    document.getElementById('aiChatConfigure')?.addEventListener('click', () => {
+      preferencePillsShown = false;
+      pillsAlreadySeen = false;
+      maybeShowPreferencePills();
+    });
+    document.getElementById('aiChatConfigureExpanded')?.addEventListener('click', () => {
+      preferencePillsShown = false;
+      pillsAlreadySeen = false;
+      maybeShowPreferencePills();
+    });
+
     //Render dynamic suggestion buttons
     function renderSuggestions(suggestions) {
         chatSuggestions.innerHTML = '';
@@ -4752,44 +4852,100 @@ if (IS_PREMIUM) {
         return bubble;
     }
 
-    function postChatbotPreference(format) {
-        const payload = { page: 'analytics' };
-        if (format !== undefined) payload.format = format;
-        fetch('/api/ai_chat/preferences', {
+    function normalizeChatbotFormatPreference(format) {
+        return format === 'detailed' || format === 'bullets' ? format : null;
+    }
+
+    function setChatbotStyleActive(optionsEl, format) {
+        const normalized = normalizeChatbotFormatPreference(format) || 'default';
+        optionsEl.querySelectorAll('.chatbot-config-opt').forEach(btn => {
+            btn.classList.toggle('active', btn.getAttribute('data-val') === normalized);
+        });
+    }
+
+    function showChatbotConfigError(wrap, message) {
+        let err = wrap.querySelector('.chatbot-config-error');
+        if (!err) {
+            err = document.createElement('div');
+            err.className = 'chatbot-config-error';
+            wrap.appendChild(err);
+        }
+        err.textContent = message || '';
+    }
+
+    async function postChatbotPreference(format) {
+        const normalized = normalizeChatbotFormatPreference(format);
+        const resp = await fetch('/api/ai_chat/preferences', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
+            body: JSON.stringify({ page: 'analytics', format: normalized }),
             credentials: 'same-origin'
-        }).catch(() => { /* best-effort; pills won't reappear in this tab anyway */ });
+        });
+        if (!resp.ok) throw new Error('Could not save preference');
+        const data = await resp.json().catch(() => ({}));
+        currentChatbotFormatPreference = normalizeChatbotFormatPreference(data.chatbot_format_preference);
         pillsAlreadySeen = true;
+        return data;
     }
 
     function maybeShowPreferencePills() {
-        if (preferencePillsShown || pillsAlreadySeen || !chatMessages) return;
+        if (!chatMessages) return;
+        const existing = document.getElementById('analyticsAiPreferenceRow');
+        if (existing) existing.remove();
         preferencePillsShown = true;
         const wrap = document.createElement('div');
         wrap.id = 'analyticsAiPreferenceRow';
-        wrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;align-items:flex-start;padding:6px 0 10px;';
+        wrap.className = 'chatbot-config-card';
         wrap.innerHTML = ''
-            + '<div style="font-size:12px;color:#6b7280;padding-left:2px;">How would you like my replies?</div>'
-            + '<div style="display:flex;flex-wrap:wrap;gap:6px;">'
-            +   '<button type="button" class="ai-chat-suggestion" data-pref="more">More detailed</button>'
-            +   '<button type="button" class="ai-chat-suggestion" data-pref="bullets">Use bullet points</button>'
-            +   '<button type="button" class="ai-chat-suggestion" data-pref="dismiss">Looks good</button>'
+            + '<div class="chatbot-config-header">'
+            +   '<span class="chatbot-config-icon"><i class="bi bi-sliders"></i></span>'
+            +   '<div>'
+            +     '<div class="chatbot-config-title">Configure Chatbot</div>'
+            +     '<div class="chatbot-config-sub">Personalise how the AI replies to you</div>'
+            +   '</div>'
+            + '</div>'
+            + '<div class="chatbot-config-section">'
+            +   '<div class="chatbot-config-label">Reply Style</div>'
+            +   '<div class="chatbot-config-options" id="analyticsStyleOptions">'
+            +     '<button type="button" class="chatbot-config-opt active" data-val="default">Default</button>'
+            +     '<button type="button" class="chatbot-config-opt" data-val="detailed">More Detailed</button>'
+            +     '<button type="button" class="chatbot-config-opt" data-val="bullets">Bullet Points</button>'
+            +   '</div>'
+            + '</div>'
+            + '<div class="chatbot-config-actions">'
+            +   '<button type="button" class="chatbot-config-apply" id="analyticsConfigApply">Apply</button>'
+            +   '<button type="button" class="chatbot-config-cancel" id="analyticsConfigCancel">Cancel</button>'
             + '</div>';
-        wrap.addEventListener('click', e => {
-            const btn = e.target.closest('[data-pref]');
-            if (!btn || chatBusy) return;
+        const optionsEl = wrap.querySelector('#analyticsStyleOptions');
+        setChatbotStyleActive(optionsEl, currentChatbotFormatPreference);
+        optionsEl.addEventListener('click', e => {
+            const btn = e.target.closest('.chatbot-config-opt');
+            if (!btn) return;
             e.stopPropagation();
-            const kind = btn.getAttribute('data-pref');
-            wrap.remove();
-            if (kind === 'more') {
-                postChatbotPreference('detailed');
-            } else if (kind === 'bullets') {
-                postChatbotPreference('bullets');
-            } else {
-                postChatbotPreference();
+            optionsEl.querySelectorAll('.chatbot-config-opt').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        });
+        wrap.querySelector('#analyticsConfigApply').addEventListener('click', async e => {
+            e.stopPropagation();
+            const applyBtn = e.currentTarget;
+            const active = optionsEl.querySelector('.chatbot-config-opt.active');
+            const val = active ? active.getAttribute('data-val') : 'default';
+            applyBtn.disabled = true;
+            applyBtn.textContent = 'Saving...';
+            showChatbotConfigError(wrap, '');
+            try {
+                await postChatbotPreference(val);
+                wrap.remove();
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            } catch (err) {
+                applyBtn.disabled = false;
+                applyBtn.textContent = 'Apply';
+                showChatbotConfigError(wrap, 'Could not save this setting. Please try again.');
             }
+        });
+        wrap.querySelector('#analyticsConfigCancel').addEventListener('click', e => {
+            e.stopPropagation();
+            wrap.remove();
         });
         chatMessages.appendChild(wrap);
         chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -4990,11 +5146,12 @@ if (IS_PREMIUM) {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    message: text,
-                    history: chatHistory,
-                    surface: 'analytics',
-                    active_section: activeInsightSection,
-                    context: {
+	                    message: text,
+	                    history: chatHistory,
+	                    surface: 'analytics',
+	                    active_section: activeInsightSection,
+	                    format_preference: currentChatbotFormatPreference,
+	                    context: {
                         surface: 'analytics',
                         active_section: activeInsightSection,
                         filters: getFilters(),

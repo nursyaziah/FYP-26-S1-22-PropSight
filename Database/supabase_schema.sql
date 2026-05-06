@@ -93,6 +93,13 @@ CREATE TABLE IF NOT EXISTS users (
     created_at        TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS chatbot_format_preference TEXT
+        CHECK (chatbot_format_preference IN ('detailed', 'bullets')),
+    ADD COLUMN IF NOT EXISTS chatbot_pills_seen_predict BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS chatbot_pills_seen_analytics BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS chatbot_pills_seen_comparison BOOLEAN NOT NULL DEFAULT FALSE;
+
 CREATE TABLE IF NOT EXISTS feature_view_log (
     id         SERIAL PRIMARY KEY,
     user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

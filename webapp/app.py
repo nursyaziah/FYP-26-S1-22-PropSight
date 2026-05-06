@@ -3317,11 +3317,24 @@ CHATBOT_PILL_PAGES = ("predict", "analytics", "comparison")
 CHATBOT_FORMAT_PREFERENCES = ("detailed", "bullets")
 
 
+def _normalize_chatbot_format_preference(value):
+    """Return the stored chatbot format preference, or None for Default."""
+    if value is None:
+        return None
+    candidate = str(value).strip().lower()
+    if candidate in {"", "default"}:
+        return None
+    if candidate not in CHATBOT_FORMAT_PREFERENCES:
+        raise ValueError("Invalid format")
+    return candidate
+
+
 def _chatbot_prefs_from_db(db_user):
     """Extract chatbot preference fields from a Supabase user row, with safe defaults."""
     db_user = db_user or {}
-    fmt = db_user.get("chatbot_format_preference")
-    if fmt not in CHATBOT_FORMAT_PREFERENCES:
+    try:
+        fmt = _normalize_chatbot_format_preference(db_user.get("chatbot_format_preference"))
+    except ValueError:
         fmt = None
     return {
         "chatbot_format_preference": fmt,
@@ -7908,6 +7921,14 @@ def api_ai_chat():
         context = {}
     if not isinstance(history, list):
         history = []
+    raw_format = body.get("format_preference", "__omit__")
+    if raw_format == "__omit__":
+        format_preference = session.get("chatbot_format_preference")
+    else:
+        try:
+            format_preference = _normalize_chatbot_format_preference(raw_format)
+        except ValueError:
+            return jsonify({"error": "Invalid format"}), 400
 
     clean_history = []
     for item in history:
@@ -7947,7 +7968,7 @@ def api_ai_chat():
         my_flat_context=my_flat_context,
         context_data=context_data,
         format_preference=_build_chatbot_format_preference_clause(
-            session.get("chatbot_format_preference")
+            format_preference
         ),
     )
 
@@ -8003,11 +8024,11 @@ def api_ai_chat_preferences():
     raw_format = body.get("format", "__omit__")
     format_provided = raw_format != "__omit__"
     format_value = None
-    if format_provided and raw_format is not None:
-        candidate = str(raw_format).strip().lower()
-        if candidate not in CHATBOT_FORMAT_PREFERENCES:
+    if format_provided:
+        try:
+            format_value = _normalize_chatbot_format_preference(raw_format)
+        except ValueError:
             return jsonify({"error": "Invalid format"}), 400
-        format_value = candidate
 
     user_id = _session_user_id()
     seen_column = f"chatbot_pills_seen_{page}"
@@ -8030,7 +8051,7 @@ def api_ai_chat_preferences():
     if format_provided:
         session["chatbot_format_preference"] = format_value
 
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "chatbot_format_preference": format_value})
 
 
 # ---------------------------------------------------------------------------

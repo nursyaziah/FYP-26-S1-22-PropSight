@@ -1073,6 +1073,91 @@ textarea.chat-inp {
 .mrt-pill.neg { border-color: #ef444430; background: #fff5f5; }
 .mrt-pill.neg .mrt-pill-val { color: #dc2626; }
 .mrt-disclaimer { font-size: 11.5px; color: #94a3b8; line-height: 1.5; }
+
+/* ===== CONFIGURE CHATBOT CARD ===== */
+.chatbot-config-card {
+  background: #fff;
+  border: 1px solid rgba(37,99,235,0.14);
+  border-radius: 14px;
+  padding: 16px 18px 14px;
+  margin: 4px 0 6px;
+  box-shadow: 0 4px 16px rgba(15,23,42,0.07);
+  max-width: 92%;
+}
+.chatbot-config-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.chatbot-config-icon {
+  width: 32px; height: 32px;
+  background: rgba(37,99,235,0.08);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  color: #2563eb; font-size: 15px; flex-shrink: 0;
+}
+.chatbot-config-title {
+  font-size: 13.5px; font-weight: 700; color: #0f172a; line-height: 1.2;
+}
+.chatbot-config-sub {
+  font-size: 11.5px; color: #64748b; margin-top: 1px;
+}
+.chatbot-config-section { margin-bottom: 14px; }
+.chatbot-config-label {
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.07em; color: #94a3b8; margin-bottom: 7px;
+}
+.chatbot-config-options { display: flex; flex-wrap: wrap; gap: 6px; }
+.chatbot-config-opt {
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 50px;
+  padding: 5px 14px;
+  font-size: 12.5px; font-weight: 600; color: #374151;
+  cursor: pointer; transition: all 0.18s;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+.chatbot-config-opt:hover {
+  border-color: #93c5fd; color: #2563eb;
+  background: rgba(37,99,235,0.04);
+}
+.chatbot-config-opt.active {
+  background: rgba(37,99,235,0.08);
+  border-color: #2563eb; color: #2563eb;
+}
+.chatbot-config-actions {
+  display: flex; align-items: center; gap: 10px; margin-top: 4px;
+}
+.chatbot-config-apply {
+  background: #0f172a; color: #fff;
+  border: none; border-radius: 50px;
+  padding: 7px 20px; font-size: 12.5px; font-weight: 700;
+  cursor: pointer; transition: background 0.18s;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+.chatbot-config-apply:hover { background: #2563eb; }
+.chatbot-config-cancel {
+  background: none; border: none;
+  color: #94a3b8; font-size: 12px; cursor: pointer;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+.chatbot-config-cancel:hover { color: #475569; }
+.chatbot-config-error {
+  color: #dc2626;
+  font-size: 11.5px;
+  margin-top: 8px;
+}
+.chatbot-config-gear-btn {
+  background: #f8fafc; border: 1.5px solid #e2e8f0;
+  border-radius: 8px; padding: 6px 9px;
+  color: #64748b; cursor: pointer; font-size: 15px;
+  transition: all 0.18s; flex-shrink: 0;
+}
+.chatbot-config-gear-btn:hover {
+  border-color: #2563eb; color: #2563eb;
+  background: rgba(37,99,235,0.04);
+}
 </style>
 {% endblock %}
 
@@ -1495,10 +1580,17 @@ textarea.chat-inp {
 
     {# ── SECTION 3: GENAI Q&A (delay 500ms) ── #}
     <div class="result-block genai-card" id="genaiPanel" style="animation-delay:500ms;">
-      <div class="genai-header">
-        <span class="p-kicker">AI Assistant</span>
-        <h3 class="section-title-lg" style="font-size:19px;">Ask About This Prediction</h3>
-        <p class="genai-sub">Predict explains one flat. Use Analytics for market trends and Comparison for side-by-side value/location tradeoffs.</p>
+      <div class="genai-header" style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div>
+          <span class="p-kicker">AI Assistant</span>
+          <h3 class="section-title-lg" style="font-size:19px;">Ask About This Prediction</h3>
+          <p class="genai-sub">Predict explains one flat. Use Analytics for market trends and Comparison for side-by-side value/location tradeoffs.</p>
+        </div>
+        {% if is_premium %}
+        <button type="button" id="pqConfigBtn" class="chatbot-config-gear-btn" title="Configure chatbot">
+          <i class="bi bi-sliders"></i>
+        </button>
+        {% endif %}
       </div>
 
       <div class="suggest-pills" id="initialSuggestions">
@@ -1947,6 +2039,7 @@ if (pForm && subBtn) {
   var ctx    = JSON.parse(ctxEl.textContent || '{}');
   var isPrem = {{ 'true' if is_premium else 'false' }};
   var pillsAlreadySeen = {{ 'true' if (g.user and g.user.get('chatbot_pills_seen_predict')) else 'false' }};
+  var currentChatbotFormatPreference = {{ (g.user.get('chatbot_format_preference') if g.user else none) | tojson }};
   var busy   = false;
   var analyticsBaseUrl = {{ url_for('analytics') | tojson }};
   var comparisonBaseUrl = {{ url_for('comparison') | tojson }};
@@ -2374,10 +2467,10 @@ if (pForm && subBtn) {
     var tyEl = appendTyping();
 
     try {
-      var endpoint = isPrem ? '/api/ai_chat' : '/api/ai_answer';
-      var body = isPrem
-        ? { message: q, history: hist, surface: 'prediction', context: apiCtx }
-        : { question: q, surface: 'prediction', context: apiCtx };
+	      var endpoint = isPrem ? '/api/ai_chat' : '/api/ai_answer';
+	      var body = isPrem
+	        ? { message: q, history: hist, surface: 'prediction', context: apiCtx, format_preference: currentChatbotFormatPreference }
+	        : { question: q, surface: 'prediction', context: apiCtx };
 
       var resp = await fetch(endpoint, {
         method: 'POST',
@@ -2611,46 +2704,108 @@ if (pForm && subBtn) {
     thread.scrollTop = thread.scrollHeight;
   }
 
-  function postChatbotPreference(format) {
-    var payload = { page: 'predict' };
-    if (format !== undefined) payload.format = format;
-    fetch('/api/ai_chat/preferences', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      credentials: 'same-origin'
-    }).catch(function () { /* best-effort; pills won't reappear in this tab anyway */ });
-    pillsAlreadySeen = true;
-  }
+	  function normalizePqChatbotFormatPreference(format) {
+	    return format === 'detailed' || format === 'bullets' ? format : null;
+	  }
+
+	  function setPqStyleActive(optionsEl, format) {
+	    var normalized = normalizePqChatbotFormatPreference(format) || 'default';
+	    optionsEl.querySelectorAll('.chatbot-config-opt').forEach(function (btn) {
+	      btn.classList.toggle('active', btn.getAttribute('data-val') === normalized);
+	    });
+	  }
+
+	  function showPqConfigError(wrap, message) {
+	    var err = wrap.querySelector('.chatbot-config-error');
+	    if (!err) {
+	      err = document.createElement('div');
+	      err.className = 'chatbot-config-error';
+	      wrap.appendChild(err);
+	    }
+	    err.textContent = message || '';
+	  }
+
+	  async function postChatbotPreference(format) {
+	    var normalized = normalizePqChatbotFormatPreference(format);
+	    var resp = await fetch('/api/ai_chat/preferences', {
+	      method: 'POST',
+	      headers: { 'Content-Type': 'application/json' },
+	      body: JSON.stringify({ page: 'predict', format: normalized }),
+	      credentials: 'same-origin'
+	    });
+	    if (!resp.ok) throw new Error('Could not save preference');
+	    var data = await resp.json().catch(function () { return {}; });
+	    currentChatbotFormatPreference = normalizePqChatbotFormatPreference(data.chatbot_format_preference);
+	    pillsAlreadySeen = true;
+	    return data;
+	  }
 
   function maybeShowPreferencePills() {
-    if (!isPrem || preferencePillsShown || pillsAlreadySeen || !thread) return;
+    if (!isPrem || !thread) return;
+    var existing = document.getElementById('pqPreferenceRow');
+    if (existing) existing.remove();
     preferencePillsShown = true;
     var wrap = document.createElement('div');
     wrap.id = 'pqPreferenceRow';
-    wrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;align-items:flex-start;padding:6px 0 10px;';
+    wrap.className = 'chatbot-config-card';
     wrap.innerHTML = ''
-      + '<div style="font-size:12px;color:#6b7280;padding-left:2px;">How would you like my replies?</div>'
-      + '<div style="display:flex;flex-wrap:wrap;gap:6px;">'
-      +   '<button type="button" class="fu-pill" data-pref="more">More detailed</button>'
-      +   '<button type="button" class="fu-pill" data-pref="bullets">Use bullet points</button>'
-      +   '<button type="button" class="fu-pill" data-pref="dismiss">Looks good</button>'
-      + '</div>';
-    wrap.addEventListener('click', function (e) {
-      var btn = e.target.closest('[data-pref]');
-      if (!btn || busy) return;
-      var kind = btn.getAttribute('data-pref');
+      + '<div class="chatbot-config-header">'
+      +   '<span class="chatbot-config-icon"><i class="bi bi-sliders"></i></span>'
+      +   '<div>'
+      +     '<div class="chatbot-config-title">Configure Chatbot</div>'
+      +     '<div class="chatbot-config-sub">Personalise how the AI replies to you</div>'
+      +   '</div>'
+      + '</div>'
+      + '<div class="chatbot-config-section">'
+      +   '<div class="chatbot-config-label">Reply Style</div>'
+      +   '<div class="chatbot-config-options" id="pqStyleOptions">'
+      +     '<button type="button" class="chatbot-config-opt active" data-val="default">Default</button>'
+      +     '<button type="button" class="chatbot-config-opt" data-val="detailed">More Detailed</button>'
+      +     '<button type="button" class="chatbot-config-opt" data-val="bullets">Bullet Points</button>'
+      +   '</div>'
+      + '</div>'
+	      + '<div class="chatbot-config-actions">'
+	      +   '<button type="button" class="chatbot-config-apply" id="pqConfigApply">Apply</button>'
+	      +   '<button type="button" class="chatbot-config-cancel" id="pqConfigCancel">Cancel</button>'
+	      + '</div>';
+	    var optionsEl = wrap.querySelector('#pqStyleOptions');
+	    setPqStyleActive(optionsEl, currentChatbotFormatPreference);
+	    optionsEl.addEventListener('click', function (e) {
+	      var btn = e.target.closest('.chatbot-config-opt');
+	      if (!btn) return;
+	      optionsEl.querySelectorAll('.chatbot-config-opt').forEach(function (b) { b.classList.remove('active'); });
+	      btn.classList.add('active');
+	    });
+	    wrap.querySelector('#pqConfigApply').addEventListener('click', async function () {
+	      var applyBtn = this;
+	      var active = optionsEl.querySelector('.chatbot-config-opt.active');
+	      var val = active ? active.getAttribute('data-val') : 'default';
+	      applyBtn.disabled = true;
+	      applyBtn.textContent = 'Saving...';
+	      showPqConfigError(wrap, '');
+	      try {
+	        await postChatbotPreference(val);
+	        wrap.remove();
+	      } catch (e) {
+	        applyBtn.disabled = false;
+	        applyBtn.textContent = 'Apply';
+	        showPqConfigError(wrap, 'Could not save this setting. Please try again.');
+	      }
+	    });
+    wrap.querySelector('#pqConfigCancel').addEventListener('click', function () {
       wrap.remove();
-      if (kind === 'more') {
-        postChatbotPreference('detailed');
-      } else if (kind === 'bullets') {
-        postChatbotPreference('bullets');
-      } else {
-        postChatbotPreference();
-      }
     });
     thread.appendChild(wrap);
     thread.scrollTop = thread.scrollHeight;
+  }
+
+  var configBtn = document.getElementById('pqConfigBtn');
+  if (configBtn) {
+    configBtn.addEventListener('click', function () {
+      preferencePillsShown = false;
+      pillsAlreadySeen = false;
+      maybeShowPreferencePills();
+    });
   }
 })();
 

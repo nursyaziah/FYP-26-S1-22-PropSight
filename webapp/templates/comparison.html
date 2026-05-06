@@ -866,6 +866,92 @@ body.propsight-app {
   margin-top: 1px;
 }
 
+/* ===== CONFIGURE CHATBOT CARD ===== */
+.chatbot-config-card {
+  background: #fff;
+  border: 1px solid rgba(37,99,235,0.14);
+  border-radius: 14px;
+  padding: 16px 18px 14px;
+  margin: 4px 0 6px;
+  box-shadow: 0 4px 16px rgba(15,23,42,0.07);
+  max-width: 92%;
+}
+.chatbot-config-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.chatbot-config-icon {
+  width: 32px; height: 32px;
+  background: rgba(37,99,235,0.08);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  color: #2563eb; font-size: 15px; flex-shrink: 0;
+}
+.chatbot-config-title {
+  font-size: 13.5px; font-weight: 700; color: #0f172a; line-height: 1.2;
+}
+.chatbot-config-sub {
+  font-size: 11.5px; color: #64748b; margin-top: 1px;
+}
+.chatbot-config-section { margin-bottom: 14px; }
+.chatbot-config-label {
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.07em; color: #94a3b8; margin-bottom: 7px;
+}
+.chatbot-config-options { display: flex; flex-wrap: wrap; gap: 6px; }
+.chatbot-config-opt {
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 50px;
+  padding: 5px 14px;
+  font-size: 12.5px; font-weight: 600; color: #374151;
+  cursor: pointer; transition: all 0.18s;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+.chatbot-config-opt:hover {
+  border-color: #93c5fd; color: #2563eb;
+  background: rgba(37,99,235,0.04);
+}
+.chatbot-config-opt.active {
+  background: rgba(37,99,235,0.08);
+  border-color: #2563eb; color: #2563eb;
+}
+.chatbot-config-actions {
+  display: flex; align-items: center; gap: 10px; margin-top: 4px;
+}
+.chatbot-config-apply {
+  background: #0f172a; color: #fff;
+  border: none; border-radius: 50px;
+  padding: 7px 20px; font-size: 12.5px; font-weight: 700;
+  cursor: pointer; transition: background 0.18s;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+.chatbot-config-apply:hover { background: #2563eb; }
+.chatbot-config-cancel {
+  background: none; border: none;
+  color: #94a3b8; font-size: 12px; cursor: pointer;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+.chatbot-config-cancel:hover { color: #475569; }
+.chatbot-config-error {
+  color: #dc2626;
+  font-size: 11.5px;
+  margin-top: 8px;
+}
+.chatbot-config-gear-btn {
+  background: #f8fafc; border: 1.5px solid #e2e8f0;
+  border-radius: 8px; padding: 6px 9px;
+  color: #64748b; cursor: pointer; font-size: 15px;
+  transition: all 0.18s; flex-shrink: 0;
+}
+.chatbot-config-gear-btn:hover {
+  border-color: #2563eb; color: #2563eb;
+  background: rgba(37,99,235,0.04);
+}
+.comparison-ai-card .chatbot-config-card { max-width: 88%; }
+
 </style>
 {% endblock %}
 
@@ -1089,11 +1175,16 @@ body.propsight-app {
                 <h3 class="comparison-ai-title">AI Comparison Assistant</h3>
                 <p class="comparison-ai-sub">Comparison handles side-by-side value/location tradeoffs. Use Predict for one-flat estimates and Analytics for market trends.</p>
             </div>
-            {% if is_premium %}
-            <span class="comparison-ai-badge">Unlimited</span>
-            {% else %}
-            <span class="comparison-ai-badge">{{ ai_daily_limit }} per day</span>
-            {% endif %}
+            <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+                {% if is_premium %}
+                <button type="button" id="caConfigBtn" class="chatbot-config-gear-btn" title="Configure chatbot">
+                    <i class="bi bi-sliders"></i>
+                </button>
+                <span class="comparison-ai-badge">Unlimited</span>
+                {% else %}
+                <span class="comparison-ai-badge">{{ ai_daily_limit }} per day</span>
+                {% endif %}
+            </div>
         </div>
 
         {% if factor_ranking %}
@@ -1763,6 +1854,7 @@ var comparisonAiStorageKey = 'propsight:comparison:aiChat:v1:' + {{ g.user.get('
 var AI_GENERATED_DISCLAIMER_TEXT = 'AI-generated explanation based on the comparison data. May contain errors.';
 var comparisonAiPreferenceShown = false;
 var comparisonAiPillsAlreadySeen = {{ 'true' if (g.user and g.user.get('chatbot_pills_seen_comparison')) else 'false' }};
+var comparisonAiFormatPreference = {{ (g.user.get('chatbot_format_preference') if g.user else none) | tojson }};
 
 function escapeComparisonText(s) {
     return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -2107,47 +2199,110 @@ function renderComparisonStarters() {
     }).join('');
 }
 
-function postComparisonChatbotPreference(format) {
-    var payload = { page: 'comparison' };
-    if (format !== undefined) payload.format = format;
-    fetch('/api/ai_chat/preferences', {
+function normalizeComparisonChatbotFormat(format) {
+    return format === 'detailed' || format === 'bullets' ? format : null;
+}
+
+function setComparisonStyleActive(optionsEl, format) {
+    var normalized = normalizeComparisonChatbotFormat(format) || 'default';
+    optionsEl.querySelectorAll('.chatbot-config-opt').forEach(function(btn) {
+        btn.classList.toggle('active', btn.getAttribute('data-val') === normalized);
+    });
+}
+
+function showComparisonConfigError(wrap, message) {
+    var err = wrap.querySelector('.chatbot-config-error');
+    if (!err) {
+        err = document.createElement('div');
+        err.className = 'chatbot-config-error';
+        wrap.appendChild(err);
+    }
+    err.textContent = message || '';
+}
+
+async function postComparisonChatbotPreference(format) {
+    var normalized = normalizeComparisonChatbotFormat(format);
+    var resp = await fetch('/api/ai_chat/preferences', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ page: 'comparison', format: normalized }),
         credentials: 'same-origin'
-    }).catch(function() { /* best-effort; pills won't reappear in this tab anyway */ });
+    });
+    if (!resp.ok) throw new Error('Could not save preference');
+    var data = await resp.json().catch(function() { return {}; });
+    comparisonAiFormatPreference = normalizeComparisonChatbotFormat(data.chatbot_format_preference);
     comparisonAiPillsAlreadySeen = true;
+    return data;
 }
 
 function maybeShowComparisonAiPreferences() {
-    if (!IS_PREMIUM || comparisonAiPreferenceShown || comparisonAiPillsAlreadySeen || !comparisonAiThread) return;
+    if (!IS_PREMIUM || !comparisonAiThread) return;
+    var existing = document.getElementById('comparisonAiPreferenceRow');
+    if (existing) existing.remove();
     comparisonAiPreferenceShown = true;
     var wrap = document.createElement('div');
     wrap.id = 'comparisonAiPreferenceRow';
-    wrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;align-items:flex-start;padding:6px 0 10px;';
+    wrap.className = 'chatbot-config-card';
     wrap.innerHTML = ''
-        + '<div style="font-size:12px;color:#6b7280;padding-left:2px;">How would you like my replies?</div>'
-        + '<div style="display:flex;flex-wrap:wrap;gap:6px;">'
-        +   '<button type="button" class="suggest-pill" data-pref="more">More detailed</button>'
-        +   '<button type="button" class="suggest-pill" data-pref="bullets">Use bullet points</button>'
-        +   '<button type="button" class="suggest-pill" data-pref="dismiss">Looks good</button>'
+        + '<div class="chatbot-config-header">'
+        +   '<span class="chatbot-config-icon"><i class="bi bi-sliders"></i></span>'
+        +   '<div>'
+        +     '<div class="chatbot-config-title">Configure Chatbot</div>'
+        +     '<div class="chatbot-config-sub">Personalise how the AI replies to you</div>'
+        +   '</div>'
+        + '</div>'
+        + '<div class="chatbot-config-section">'
+        +   '<div class="chatbot-config-label">Reply Style</div>'
+        +   '<div class="chatbot-config-options" id="caStyleOptions">'
+        +     '<button type="button" class="chatbot-config-opt active" data-val="default">Default</button>'
+        +     '<button type="button" class="chatbot-config-opt" data-val="detailed">More Detailed</button>'
+        +     '<button type="button" class="chatbot-config-opt" data-val="bullets">Bullet Points</button>'
+        +   '</div>'
+        + '</div>'
+        + '<div class="chatbot-config-actions">'
+        +   '<button type="button" class="chatbot-config-apply" id="caConfigApply">Apply</button>'
+        +   '<button type="button" class="chatbot-config-cancel" id="caConfigCancel">Cancel</button>'
         + '</div>';
-    wrap.addEventListener('click', function(e) {
-        var btn = e.target.closest('[data-pref]');
-        if (!btn || comparisonAiBusy) return;
-        var kind = btn.getAttribute('data-pref');
-        wrap.remove();
-        if (kind === 'more') {
-            postComparisonChatbotPreference('detailed');
-        } else if (kind === 'bullets') {
-            postComparisonChatbotPreference('bullets');
-        } else {
-            postComparisonChatbotPreference();
+    var optionsEl = wrap.querySelector('#caStyleOptions');
+    setComparisonStyleActive(optionsEl, comparisonAiFormatPreference);
+    optionsEl.addEventListener('click', function(e) {
+        var btn = e.target.closest('.chatbot-config-opt');
+        if (!btn) return;
+        optionsEl.querySelectorAll('.chatbot-config-opt').forEach(function(b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+    });
+    wrap.querySelector('#caConfigApply').addEventListener('click', async function() {
+        var applyBtn = this;
+        var active = optionsEl.querySelector('.chatbot-config-opt.active');
+        var val = active ? active.getAttribute('data-val') : 'default';
+        applyBtn.disabled = true;
+        applyBtn.textContent = 'Saving...';
+        showComparisonConfigError(wrap, '');
+        try {
+            await postComparisonChatbotPreference(val);
+            wrap.remove();
+        } catch (e) {
+            applyBtn.disabled = false;
+            applyBtn.textContent = 'Apply';
+            showComparisonConfigError(wrap, 'Could not save this setting. Please try again.');
         }
+    });
+    wrap.querySelector('#caConfigCancel').addEventListener('click', function() {
+        wrap.remove();
     });
     comparisonAiThread.appendChild(wrap);
     comparisonAiThread.scrollTop = comparisonAiThread.scrollHeight;
 }
+
+(function wireComparisonConfigBtn() {
+    var btn = document.getElementById('caConfigBtn');
+    if (!btn) return;
+    btn.addEventListener('click', function() {
+        comparisonAiPreferenceShown = false;
+        comparisonAiPillsAlreadySeen = false;
+        maybeShowComparisonAiPreferences();
+    });
+})();
 
 function isLikelyIncompleteComparisonReply(reply) {
     var text = String(reply || '').trim();
@@ -2194,11 +2349,12 @@ window.sendComparisonAI = async function(text) {
         var endpoint = IS_PREMIUM ? '/api/ai_chat' : '/api/ai_answer';
         var body = IS_PREMIUM
             ? {
-                message: q,
-                history: comparisonAiHistory,
-                surface: 'comparison',
-                context: buildComparisonApiContext()
-            }
+	                message: q,
+	                history: comparisonAiHistory,
+	                surface: 'comparison',
+	                format_preference: comparisonAiFormatPreference,
+	                context: buildComparisonApiContext()
+	            }
             : {
                 question: q,
                 surface: 'comparison',
