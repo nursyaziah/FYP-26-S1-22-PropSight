@@ -1063,6 +1063,10 @@
             background-color: white;
         }
 
+        .pricing-section .check-list i.bi-x-lg {
+            color: #dc3545 !important;
+        }
+
         .pricing-card {
             background: white;
             border: 1px solid var(--border);
@@ -3024,29 +3028,25 @@
         <div class="container">
             <div class="text-center mb-5 pb-4 reveal">
                 <h2 class="hero-title" style="font-size: 3.5rem;">Transparent Pricing</h2>
-                <p class="hero-subtitle mx-auto">Choose how deeply you want to inspect each estimate, from essential
-                    context to full feature-by-feature explainability.
-                </p>
+                <p class="hero-subtitle mx-auto">Get smarter AI insights, no usage limits, and the full PropSight toolkit — all for less than a coffee a month.</p>
             </div>
 
             <div class="row justify-content-center g-5">
                 <div class="col-lg-4 col-md-6 reveal stagger-1">
                     <div class="pricing-card">
                         <h4 class="fw-bold mb-2">General</h4>
-                        <p class="text-gray mb-4 fw-medium">For casual market browsing.</p>
                         <h2 class="price-value mb-5">Free</h2>
-                        <a href="/register" class="btn btn-outline-custom w-100 btn-custom py-3 fs-6">Create Free
-                            Account</a>
+                        <a href="/register" class="btn btn-outline-custom w-100 btn-custom py-3 fs-6">Get Started</a>
 
                         <ul class="check-list mt-5">
-                            <li><i class="bi bi-check-circle-fill text-dark opacity-25"></i> Unlimited Price Predictions
-                            </li>
+                            <li><i class="bi bi-check-circle-fill text-dark opacity-25"></i> Price predictions</li>
                             <li><i class="bi bi-check-circle-fill text-dark opacity-25"></i> Save up to 3 predictions</li>
-                            <li><i class="bi bi-check-circle-fill text-dark opacity-25"></i> 3 Map / Analytics views per
-                                week</li>
-                            <li><i class="bi bi-check-circle-fill text-dark opacity-25"></i> Compare up to 2 properties
-                            </li>
-                            <li><i class="bi bi-check-circle-fill text-dark opacity-25"></i> {{ ai_daily_limit }} AI answers per day</li>
+                            <li><i class="bi bi-check-circle-fill text-dark opacity-25"></i> Interactive map (3 views/week)</span></li>
+                            <li><i class="bi bi-check-circle-fill text-dark opacity-25"></i> Analytics dashboard (3 views/week)</span></li>
+                            <li><i class="bi bi-check-circle-fill text-dark opacity-25"></i> Comparison tool (3 views/week)</span></li>
+                            <li><i class="bi bi-check-circle-fill text-dark opacity-25"></i> AI answers ({{ ai_daily_limit }} per day, short replies)</span></li>
+                            <li><i class="bi bi-x-lg text-danger flex-shrink-0"></i><span class="text-muted fw-normal">No conversation memory</span></li>
+                            <li><i class="bi bi-x-lg text-danger flex-shrink-0"></i><span class="text-muted fw-normal">No reply style customisation</span></li>
                         </ul>
                     </div>
                 </div>
@@ -3054,17 +3054,19 @@
                 <div class="col-lg-4 col-md-6 reveal stagger-2">
                     <div class="pricing-card pro">
                         <div class="pro-badge">RECOMMENDED</div>
-                        <h4 class="fw-bold text-primary mb-2">Maximum Transparency</h4>
-                        <p class="text-gray mb-4 fw-medium">For informed homeowners.</p>
+                        <h4 class="fw-bold text-primary mb-2">{{ premium_plan.name }}</h4>
                         <div class="d-flex align-items-baseline mb-5">
                             <h2 class="price-value mb-0 text-dark">{{ premium_price_display }}</h2>
                             <span class="text-gray ms-2 fw-bold">{{ premium_plan.billing_period }}</span>
                         </div>
                         <a href="/register?plan=premium"
-                            class="btn btn-primary-custom w-100 btn-custom py-3 fs-6">Access Maximum Transparency</a>
+                            class="btn btn-primary-custom w-100 btn-custom py-3 fs-6">Sign Up &amp; Upgrade</a>
 
                         <ul class="check-list mt-5">
-                            <li><i class="bi bi-check-circle-fill text-primary"></i> Unlimited AI answers and chat</li>
+                            <li><i class="bi bi-check-circle-fill text-primary"></i> <strong>Unlimited AI chat</strong> — no daily cap</li>
+                            <li><i class="bi bi-check-circle-fill text-primary"></i> Longer, more detailed AI replies</li>
+                            <li><i class="bi bi-check-circle-fill text-primary"></i> Multi-turn memory — AI remembers your conversation</li>
+                            <li><i class="bi bi-check-circle-fill text-primary"></i> Customise reply style (detailed or bullet points)</li>
                             {% for benefit in premium_plan.benefits %}
                             <li><i class="bi bi-check-circle-fill text-primary"></i> {{ benefit }}</li>
                             {% endfor %}
