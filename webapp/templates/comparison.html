@@ -955,6 +955,22 @@ body.propsight-app {
   background: #fef2f2;
   border-color: #f87171;
 }
+.chatbot-config-delete {
+  background: #fff;
+  border: 1.5px solid #fecaca;
+  border-radius: 50px;
+  color: #dc2626;
+  cursor: pointer;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 6px 14px;
+  transition: all 0.18s;
+}
+.chatbot-config-delete:hover {
+  background: #fef2f2;
+  border-color: #ef4444;
+}
 .chatbot-config-hint {
   color: #94a3b8;
   font-size: 11.5px;
@@ -2196,6 +2212,22 @@ function saveAccountComparisonAiHistory() {
     }).catch(function() {});
 }
 
+async function deleteAccountComparisonAiHistory(scopeKey) {
+    var targetScope = scopeKey || comparisonAiMemoryScopeKey;
+    var resp = await fetch('/api/ai_chat/memory', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+            surface: comparisonAiMemorySurface,
+            scope_key: targetScope
+        })
+    });
+    if (!resp.ok) throw new Error('Could not delete chat');
+    try { localStorage.removeItem(buildComparisonAiStorageKey(targetScope)); } catch (e) {}
+    return true;
+}
+
 function saveStoredComparisonAiHistory() {
     try {
         localStorage.setItem(comparisonAiStorageKey, JSON.stringify(comparisonAiHistory));
@@ -2416,16 +2448,29 @@ async function postComparisonChatbotPreference(format) {
     return data;
 }
 
-async function resetComparisonAiHistory() {
-    setComparisonAiActiveScope(makeComparisonAiConversationScopeKey());
-    comparisonAiHistory = [];
-    try { localStorage.removeItem(comparisonAiStorageKey); } catch (e) {}
+function clearComparisonAiUi() {
     if (comparisonAiThread) comparisonAiThread.innerHTML = '';
     if (comparisonAiSuggestions) {
         comparisonAiSuggestions.style.display = '';
         if (HAS_RESULTS) renderComparisonStarters();
     }
     comparisonAiPreferenceShown = false;
+}
+
+async function resetComparisonAiHistory() {
+    setComparisonAiActiveScope(makeComparisonAiConversationScopeKey());
+    comparisonAiHistory = [];
+    try { localStorage.removeItem(comparisonAiStorageKey); } catch (e) {}
+    clearComparisonAiUi();
+}
+
+async function deleteCurrentComparisonAiChat() {
+    var deletedScope = comparisonAiMemoryScopeKey;
+    await deleteAccountComparisonAiHistory(deletedScope);
+    setComparisonAiActiveScope(makeComparisonAiConversationScopeKey());
+    comparisonAiHistory = [];
+    try { localStorage.removeItem(comparisonAiStorageKey); } catch (e) {}
+    clearComparisonAiUi();
 }
 
 function rememberComparisonTurn(userText, modelText) {
@@ -2460,7 +2505,10 @@ function buildComparisonSessionListHtml(sessions) {
         return '<div class="chatbot-memory-turn">'
             + '<div class="chatbot-memory-role">' + title + '</div>'
             + '<div class="chatbot-memory-text">' + count + ' saved message' + (count === 1 ? '' : 's') + '</div>'
-            + '<button type="button" class="chatbot-config-secondary" data-comparison-open-scope="' + escapeComparisonText(session.scope_key) + '">' + active + '</button>'
+            + '<div class="chatbot-config-history-actions">'
+            +   '<button type="button" class="chatbot-config-secondary" data-comparison-open-scope="' + escapeComparisonText(session.scope_key) + '">' + active + '</button>'
+            +   '<button type="button" class="chatbot-config-delete" data-comparison-delete-scope="' + escapeComparisonText(session.scope_key) + '">Delete</button>'
+            + '</div>'
             + '</div>';
     }).join('') + '</div>';
 }
@@ -2499,6 +2547,29 @@ async function appendComparisonMemoryView() {
     comparisonAiThread.appendChild(wrap);
     wrap.querySelector('#comparisonMemoryClose').addEventListener('click', function() { wrap.remove(); });
     wrap.addEventListener('click', async function(e) {
+        var deleteBtn = e.target.closest('[data-comparison-delete-scope]');
+        if (deleteBtn) {
+            e.stopPropagation();
+            var scopeKey = deleteBtn.getAttribute('data-comparison-delete-scope');
+            if (!confirm('Delete this saved chat permanently?')) return;
+            deleteBtn.disabled = true;
+            deleteBtn.textContent = 'Deleting...';
+            try {
+                await deleteAccountComparisonAiHistory(scopeKey);
+                if (scopeKey === comparisonAiMemoryScopeKey) {
+                    setComparisonAiActiveScope(makeComparisonAiConversationScopeKey());
+                    comparisonAiHistory = [];
+                    clearComparisonAiUi();
+                }
+                var refreshed = await loadAccountComparisonAiSessions();
+                var listEl2 = wrap.querySelector('#comparisonSessionList');
+                if (listEl2) listEl2.innerHTML = buildComparisonSessionListHtml(refreshed);
+            } catch (err) {
+                deleteBtn.disabled = false;
+                deleteBtn.textContent = 'Delete';
+            }
+            return;
+        }
         var btn = e.target.closest('[data-comparison-open-scope]');
         if (!btn) return;
         btn.disabled = true;
@@ -2540,8 +2611,9 @@ function maybeShowComparisonAiPreferences() {
         +   '<div class="chatbot-config-history-actions">'
         +     '<button type="button" class="chatbot-config-secondary" id="caConfigViewMemory">View Past Chats</button>'
         +     '<button type="button" class="chatbot-config-reset" id="caConfigReset">New Chat</button>'
+        +     '<button type="button" class="chatbot-config-delete" id="caConfigDelete">Delete Current Chat</button>'
         +   '</div>'
-        +   '<div class="chatbot-config-hint">Starts fresh while keeping past chats available in Chat Memory.</div>'
+        +   '<div class="chatbot-config-hint">New Chat starts fresh while keeping history. Delete Current Chat removes this conversation permanently.</div>'
         + '</div>'
         + '<div class="chatbot-config-actions">'
         +   '<button type="button" class="chatbot-config-apply" id="caConfigApply">Apply</button>'
@@ -2586,6 +2658,20 @@ function maybeShowComparisonAiPreferences() {
             resetBtn.disabled = false;
             resetBtn.textContent = 'New Chat';
             showComparisonConfigError(wrap, 'Could not start a new chat. Please try again.');
+        }
+    });
+    wrap.querySelector('#caConfigDelete').addEventListener('click', async function() {
+        if (!confirm('Delete the current chat permanently? This cannot be undone.')) return;
+        var deleteBtn = this;
+        deleteBtn.disabled = true;
+        deleteBtn.textContent = 'Deleting...';
+        showComparisonConfigError(wrap, '');
+        try {
+            await deleteCurrentComparisonAiChat();
+        } catch (e) {
+            deleteBtn.disabled = false;
+            deleteBtn.textContent = 'Delete Current Chat';
+            showComparisonConfigError(wrap, 'Could not delete this chat. Please try again.');
         }
     });
     wrap.querySelector('#caConfigViewMemory').addEventListener('click', function() {

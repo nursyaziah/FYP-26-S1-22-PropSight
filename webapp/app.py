@@ -8630,6 +8630,107 @@ def _is_analytics_flat_type_question(text):
     ))
 
 
+def _analytics_town_label(context):
+    filters = context.get("filters") if isinstance(context.get("filters"), dict) else {}
+    town = str(filters.get("town") or "this town").strip() or "this town"
+    return town.title() if town.isupper() else town
+
+
+def _is_analytics_demand_shift_question(text):
+    text = str(text or "").lower()
+    return bool(re.search(
+        r"\b(demand|buyer activity|transaction volume|transactions?|sales volume|sales activity)\b"
+        r".*\b(shift(?:ed)?|chang(?:ed|e)|rising|slowing|falling|trend|over time|volume|activity)\b"
+        r"|\bhow\s+has\b.*\b(demand|transaction|sales)\b.*\bshift(?:ed)?\b"
+        r"|\b(are|is)\b.*\btransactions?\b.*\b(rising|slowing|falling|stable)\b",
+        text,
+    ))
+
+
+def _build_analytics_demand_shift_response(question, context, format_preference=None):
+    if not _is_analytics_demand_shift_question(question):
+        return None
+    if not isinstance(context, dict):
+        context = {}
+
+    filters = context.get("filters") if isinstance(context.get("filters"), dict) else {}
+    town = _analytics_town_label(context)
+    flat_type = str(filters.get("flat_type") or "this flat type").strip() or "this flat type"
+    chart_data = context.get("chart_data") if isinstance(context.get("chart_data"), dict) else {}
+    rows = [
+        row for row in _sort_rows_by_year(_question_rows(chart_data.get("volume")))
+        if _coerce_float(row.get("txn_count")) is not None
+    ]
+
+    intro = f"Use the Transaction Volume chart to track {flat_type} demand in {town} over time."
+    if len(rows) < 2:
+        if format_preference == "bullets":
+            return (
+                f"- {intro}\n"
+                "- The available volume data is too limited to describe a shift reliably.\n"
+                "- Cross-check Flat Type Distribution to see how this flat type compares with the local mix."
+            )
+        return (
+            f"{intro} The available volume data is too limited to describe a shift reliably. "
+            "Cross-check Flat Type Distribution to see how this flat type compares with the local mix."
+        )
+
+    first, last = rows[0], rows[-1]
+    first_count = _coerce_float(first.get("txn_count")) or 0
+    last_count = _coerce_float(last.get("txn_count")) or 0
+    change = last_count - first_count
+    pct = ((last_count - first_count) / first_count * 100) if first_count else None
+    direction = "risen" if change > 0 else "fallen" if change < 0 else "stayed flat"
+    peak = max(rows, key=lambda row: _coerce_float(row.get("txn_count")) or 0)
+    low = min(rows, key=lambda row: _coerce_float(row.get("txn_count")) or 0)
+    pct_text = f" ({_format_ai_pct(pct)})" if pct is not None else ""
+    main = (
+        f"{flat_type} transaction volume in {town} has {direction} from "
+        f"{_format_ai_number(first_count)} transactions in {_row_label(first)} to "
+        f"{_format_ai_number(last_count)} in {_row_label(last)}{pct_text}."
+    )
+    peak_low = (
+        f"The busiest year was {_row_label(peak)} with "
+        f"{_format_ai_number(peak.get('txn_count'))} transactions, while the quietest was "
+        f"{_row_label(low)} with {_format_ai_number(low.get('txn_count'))}."
+    )
+    if abs(change) <= 1:
+        meaning = (
+            "That points to stable buyer activity rather than a clear demand surge or retreat."
+        )
+    elif change > 0:
+        meaning = (
+            "That points to more active buyer turnover for this flat type, although price trend should be checked before calling it stronger pricing momentum."
+        )
+    else:
+        meaning = (
+            "That points to lighter buyer turnover or fewer available sales, so individual transactions can carry more weight in the price trend."
+        )
+    next_step = "Use Transaction Volume for demand strength, then compare it with Price Trend to see whether prices moved with or against activity."
+
+    if format_preference == "bullets":
+        return "\n".join([
+            f"- {main}",
+            f"- {peak_low}",
+            f"- {meaning}",
+            f"- {next_step}",
+        ])
+
+    if format_preference == "detailed":
+        return " ".join([
+            main,
+            peak_low,
+            meaning,
+            "What this means for you: shifts in transaction count signal how active the local resale market is for your flat type, which affects how quickly comparable sales accumulate and how reliable the price trend looks.",
+            "Caveat: volume is also affected by how many owners choose to sell in a given year, so a lower count does not automatically mean weak demand — it may simply mean tighter supply or a smaller sample.",
+            "Cross-check the Price Trend chart on this Analytics page to see whether prices moved with or against this volume direction; that combination is what tells you about pricing power versus buyer hesitation.",
+            next_step,
+        ])
+
+    # DEFAULT — tight: headline + one-sentence meaning, no closing chart link.
+    return " ".join([main, meaning])
+
+
 def _flat_type_price_value(row):
     price = _coerce_float(row.get("median_price"))
     if price is None:
@@ -8637,14 +8738,13 @@ def _flat_type_price_value(row):
     return price
 
 
-def _build_analytics_flat_type_response(question, context):
+def _build_analytics_flat_type_response(question, context, format_preference=None):
     if not _is_analytics_flat_type_question(question):
         return None
     if not isinstance(context, dict):
         context = {}
 
-    filters = context.get("filters") if isinstance(context.get("filters"), dict) else {}
-    town = str(filters.get("town") or "this town").strip() or "this town"
+    town = _analytics_town_label(context)
     chart_data = context.get("chart_data") if isinstance(context.get("chart_data"), dict) else {}
     rows = [
         row for row in _question_rows(chart_data.get("flat_type"))
@@ -8656,13 +8756,20 @@ def _build_analytics_flat_type_response(question, context):
         "on this Analytics page."
     )
     if not rows:
+        if format_preference == "bullets":
+            return (
+                f"- Use the Flat Type Distribution chart on this Analytics page to compare flat types in {town}.\n"
+                "- It shows transaction volume and average price by flat type.\n"
+                "- Use it as a demand-mix view, not a direct ranking of which flat type is best."
+            )
         return (
             intro
             + " It shows transaction volume and average price by flat type, so you can see "
               "which room types make up local demand and how pricing differs."
         )
 
-    parts = [intro]
+    activity_text = ""
+    price_text = ""
     count_rows = [
         row for row in rows
         if _coerce_float(row.get("txn_count")) is not None
@@ -8673,7 +8780,7 @@ def _build_analytics_flat_type_response(question, context):
             key=lambda row: _coerce_float(row.get("txn_count")) or 0,
             reverse=True,
         )[:3]
-        parts.append(
+        activity_text = (
             "By activity, "
             + ", ".join(
                 f"{_row_label(row)} has {_format_ai_number(row.get('txn_count'))} transactions"
@@ -8689,15 +8796,54 @@ def _build_analytics_flat_type_response(question, context):
     if price_rows:
         high = max(price_rows, key=lambda row: _flat_type_price_value(row) or 0)
         low = min(price_rows, key=lambda row: _flat_type_price_value(row) or 0)
-        parts.append(
+        price_text = (
             f"By price, {_row_label(high)} is highest at "
             f"{_format_ai_currency(_flat_type_price_value(high))}, while "
             f"{_row_label(low)} is lowest at {_format_ai_currency(_flat_type_price_value(low))}."
         )
 
-    parts.append(
-        "Use this as a demand-mix view, not a direct ranking of which flat type is best."
-    )
+    if format_preference == "bullets":
+        bullet_lines = [f"- Compare flat types in {town} using the Flat Type Distribution chart on this Analytics page."]
+        if activity_text:
+            bullet_lines.append(f"- {activity_text}")
+        if price_text:
+            bullet_lines.append(f"- {price_text}")
+        bullet_lines.append("- Use this as a demand-mix view, not a direct ranking of which flat type is best.")
+        return "\n".join(bullet_lines)
+
+    if format_preference == "detailed":
+        parts = [intro]
+        if activity_text:
+            parts.append(activity_text)
+            parts.append(
+                "What this means for you: activity is the demand-mix signal — it shows which "
+                "flat types are actually trading more often in the selected town and period, "
+                "which affects how thick the comparable-sales pool is when you benchmark your flat."
+            )
+        if price_text:
+            parts.append(price_text)
+            parts.append(
+                "The price gap mainly reflects flat size and transaction mix, so it should not "
+                "be read as one flat type being objectively better — a 5-room median sitting "
+                "above a 3-room median is mostly the floor-area difference, not a quality verdict."
+            )
+        parts.append(
+            "Caveat: small sample years or one or two outlier sales can skew either the activity "
+            "count or the median price, so check whether transaction counts are thin before reading "
+            "too much into a single year's number."
+        )
+        parts.append(
+            "Use the Flat Type Distribution chart to see where your selected flat type sits against "
+            "the local mix, then cross-check Price Trend and Transaction Volume for momentum direction."
+        )
+        return " ".join(parts)
+
+    # DEFAULT — tight: just the core data points, no caveats or chart suggestion.
+    parts = [intro]
+    if activity_text:
+        parts.append(activity_text)
+    if price_text:
+        parts.append(price_text)
     return " ".join(parts)
 
 
@@ -8804,7 +8950,35 @@ def api_ai_answer():
     my_flat = context.get("my_flat") or {}
 
     if surface == "analytics":
-        flat_type_answer = _build_analytics_flat_type_response(question, context)
+        raw_format = body.get("format_preference", "__omit__")
+        if raw_format == "__omit__":
+            format_preference = session.get("chatbot_format_preference")
+        else:
+            try:
+                format_preference = _normalize_chatbot_format_preference(raw_format)
+            except ValueError:
+                return jsonify({"error": "Invalid format"}), 400
+        demand_answer = _build_analytics_demand_shift_response(
+            question,
+            context,
+            format_preference,
+        )
+        if demand_answer:
+            tier = session.get("subscription_tier", "general")
+            if tier != "premium":
+                _log_feature_view(_session_user_id(), "ai_answer")
+                remaining = max(0, GENERAL_DAILY_AI_ANSWER_LIMIT - used - 1)
+            else:
+                remaining = -1
+            return jsonify({
+                "answer": _polish_ai_homeowner_text(demand_answer),
+                "remaining": remaining,
+            })
+        flat_type_answer = _build_analytics_flat_type_response(
+            question,
+            context,
+            format_preference,
+        )
         if flat_type_answer:
             tier = session.get("subscription_tier", "general")
             if tier != "premium":
@@ -8872,6 +9046,8 @@ def api_ai_answer():
 
 
 _AI_CHAT_SYSTEM_PROMPT = """You are a Singapore HDB (public housing) market analyst chatbot.
+
+{format_preference_primary}
 
 The user is viewing {surface_desc}: {filter_desc}
 
@@ -8990,21 +9166,95 @@ def _wrap_ai_user_question(text):
     return f"{AI_USER_QUESTION_OPEN_TAG}\n{safe_text}\n{AI_USER_QUESTION_CLOSE_TAG}"
 
 
+def _build_chatbot_format_preference_primary(preference):
+    """Top-of-prompt format directive. Sits BEFORE all other rules so Gemini
+    treats it as the primary output contract instead of a footnote at the end.
+
+    The detailed clause at the bottom of the prompt is reinforcement — this
+    block is what actually drives length and structure.
+    """
+    if preference == "bullets":
+        return (
+            "PRIMARY OUTPUT RULE — REPLY STYLE = BULLETS (overrides every formatting "
+            "instruction below):\n"
+            "Output a bulleted list and nothing else. NO introductory paragraph. "
+            "NO closing summary. Each bullet ≤ 15 words. Maximum 5 bullets. "
+            "If a downstream rule asks for a numbered list (e.g. shap_answer_focus), "
+            "use that numbered list but still cap each item at 15 words. "
+            "DO NOT write paragraphs in this mode under any circumstance."
+        )
+    if preference == "detailed":
+        return (
+            "PRIMARY OUTPUT RULE — REPLY STYLE = DETAILED (overrides every concision "
+            "instruction below):\n"
+            "Target reply length is 280 to 360 words across 2 to 3 short paragraphs. "
+            "This OVERRIDES the 140-word and 240-word caps stated later in the prompt. "
+            "Every reply MUST contain all four of these sections, in order:\n"
+            "  (A) HEADLINE: first sentence with the exact dollar / percent / year figure.\n"
+            "  (B) WHAT THIS MEANS FOR YOU: 2-3 sentences translating the numbers into "
+            "homeowner-plain language.\n"
+            "  (C) ONE EXPLICIT CAVEAT or limitation (small comparable sample, lease-decay "
+            "assumption, recent market shock, model error band, etc.) — never skip this.\n"
+            "  (D) ONE NAMED PropSight chart or section to inspect next (e.g. \"Open the "
+            "Lease Decay chart\", \"Check the Price Trend section\").\n"
+            "When shap_answer_focus produces a numbered list, expand the same structure "
+            "INTO each list item (each item gets a meaning sentence + caveat where relevant). "
+            "If your draft reply is shorter than 250 words, you have not satisfied this rule — "
+            "rewrite it longer with the missing section."
+        )
+    return (
+        "PRIMARY OUTPUT RULE — REPLY STYLE = DEFAULT (overrides the 240-word more-detailed "
+        "allowance below):\n"
+        "Match the free-tier reply envelope exactly: 3 to 4 sentences, ≤ 140 words, single "
+        "paragraph. DO NOT use the up-to-6-sentences / 240-word expansion mentioned later in "
+        "the prompt — that allowance is reserved for the Detailed preset only. "
+        "When shap_answer_focus produces a numbered list, each item is one short line: "
+        "label + dollar figure ONLY. NO meaning sentence per item. NO caveat per item. "
+        "NO closing 'inspect next' chart link. "
+        "If your draft reply is longer than 140 words, you have violated this rule — cut it "
+        "back before responding."
+    )
+
+
 def _build_chatbot_format_preference_clause(preference):
     """Render a system-prompt clause honouring the user's chosen reply format."""
     if preference == "bullets":
         return (
-            "\nThe user has explicitly chosen short bullet-point replies. "
+            "\nREPLY STYLE = BULLETS. The user has explicitly chosen bullet-point replies. "
             "Format every answer as a brief bulleted list — honour this across all turns, "
-            "including after history truncation."
+            "including after history truncation. Each bullet ≤15 words, max 5 bullets, "
+            "no introductory paragraph before the list, no closing summary after it. "
+            "When shap_answer_focus requires a numbered list, use that numbered list "
+            "instead of bullets but keep each item ≤15 words."
         )
     if preference == "detailed":
         return (
-            "\nThe user has explicitly chosen more detailed replies. Use the longer-answer "
-            "allowance (up to 6 sentences / 240 words) by default and unpack the reasoning, "
-            "while still respecting the grounding and anti-jargon rules above."
+            "\nREPLY STYLE = DETAILED. This OVERRIDES the default 140-word / 240-word concision "
+            "caps above. Target 280-360 words across 2-3 short paragraphs (or a richer numbered "
+            "list when shap_answer_focus requires one — in that case, each list item gets one "
+            "extra plain-English meaning sentence after the number). "
+            "Every reply MUST include all four of: "
+            "(1) the headline answer with exact numbers in the first sentence; "
+            "(2) a 'what this means for you' explanation that translates the numbers into "
+            "homeowner-plain language; "
+            "(3) one explicit limitation, caveat, or uncertainty (small comparable sample, "
+            "lease-decay assumption, recent market shock, model error band, etc.); "
+            "(4) one specific PropSight chart or section to inspect next, named exactly. "
+            "Keep all claims grounded in the supplied context and still follow the anti-jargon "
+            "and no-advice rules above."
         )
-    return ""
+    # Default preset — match the free-tier (general) reply envelope so a premium
+    # user on Default sees the same shape of answer as a non-premium user.
+    return (
+        "\nREPLY STYLE = DEFAULT. This must match the general-tier reply envelope exactly: "
+        "3-4 sentences, ≤140 words, single paragraph for narrative answers. "
+        "DO NOT use the 'up to 6 sentences / 240 words' more-detailed allowance from the "
+        "concision rule above — that expansion is reserved for the Detailed preset. "
+        "When shap_answer_focus.kind requires a ranked or numbered list, keep each list item "
+        "to one short line (label + dollar figure only — no extra explanation per item). "
+        "Lead with the headline number, add the plain-English meaning, then stop. Do not pad "
+        "with extra caveats or 'inspect next' chart links unless the user explicitly asks."
+    )
 
 
 def _truncate_ai_chat_history_turn(text):
@@ -9226,7 +9476,33 @@ def api_ai_chat():
     chart_data = context.get("chart_data", {})
     my_flat = context.get("my_flat") or {}
     if surface == "analytics":
-        flat_type_reply = _build_analytics_flat_type_response(message, context)
+        demand_reply = _build_analytics_demand_shift_response(
+            message,
+            context,
+            format_preference,
+        )
+        if demand_reply:
+            reply = _polish_ai_homeowner_text(demand_reply)
+            if memory_surface and memory_scope_key:
+                try:
+                    _save_ai_chat_memory(
+                        _session_user_id(),
+                        memory_surface,
+                        memory_scope_key,
+                        memory_history + [
+                            {"role": "user", "text": message},
+                            {"role": "model", "text": reply},
+                        ],
+                    )
+                except SupabaseError as exc:
+                    app.logger.warning("Could not save account chat memory: %s", exc)
+            _log_feature_view(_session_user_id(), "ai_chat")
+            return jsonify({"reply": reply})
+        flat_type_reply = _build_analytics_flat_type_response(
+            message,
+            context,
+            format_preference,
+        )
         if flat_type_reply:
             reply = _polish_ai_homeowner_text(flat_type_reply)
             if memory_surface and memory_scope_key:
@@ -9264,6 +9540,9 @@ def api_ai_chat():
         filter_desc=filter_desc,
         my_flat_context=my_flat_context,
         context_data=context_data,
+        format_preference_primary=_build_chatbot_format_preference_primary(
+            format_preference
+        ),
         format_preference=_build_chatbot_format_preference_clause(
             format_preference
         ),
@@ -9294,7 +9573,7 @@ def api_ai_chat():
         # Add current message
         contents.append({"role": "user", "parts": [{"text": _wrap_ai_user_question(message)}]})
 
-    temp = 0.15 if surface == "prediction" else 0.3
+    temp = 0.3
     text = _call_gemini_chat(contents, max_tokens=AI_CHAT_MAX_TOKENS, temperature=temp)
     if not text:
         return jsonify({"error": "AI temporarily unavailable"}), 503

@@ -1163,6 +1163,22 @@ textarea.chat-inp {
   background: #fef2f2;
   border-color: #f87171;
 }
+.chatbot-config-delete {
+  background: #fff;
+  border: 1.5px solid #fecaca;
+  border-radius: 50px;
+  color: #dc2626;
+  cursor: pointer;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 6px 14px;
+  transition: all 0.18s;
+}
+.chatbot-config-delete:hover {
+  background: #fef2f2;
+  border-color: #ef4444;
+}
 .chatbot-config-hint {
   color: #94a3b8;
   font-size: 11.5px;
@@ -2782,6 +2798,22 @@ if (pForm && subBtn) {
 	    }).catch(function () {});
 	  }
 
+	  async function deleteAccountPqHistory(scopeKey) {
+	    var targetScope = scopeKey || chatMemoryScopeKey;
+	    var resp = await fetch('/api/ai_chat/memory', {
+	      method: 'DELETE',
+	      headers: { 'Content-Type': 'application/json' },
+	      credentials: 'same-origin',
+	      body: JSON.stringify({
+	        surface: chatMemorySurface,
+	        scope_key: targetScope
+	      })
+	    });
+	    if (!resp.ok) throw new Error('Could not delete chat');
+	    try { localStorage.removeItem(buildPqChatStorageKey(targetScope)); } catch (e) {}
+	    return true;
+	  }
+
 	  function saveStoredPqHistory() {
 	    try { localStorage.setItem(chatStorageKey, JSON.stringify(hist)); } catch (e) {}
 	    saveAccountPqHistory();
@@ -2819,7 +2851,10 @@ if (pForm && subBtn) {
 	      return '<div class="chatbot-memory-turn">'
 	        + '<div class="chatbot-memory-role">' + title + '</div>'
 	        + '<div class="chatbot-memory-text">' + count + ' saved message' + (count === 1 ? '' : 's') + '</div>'
-	        + '<button type="button" class="chatbot-config-secondary" data-pq-open-scope="' + escapePqText(session.scope_key) + '">' + active + '</button>'
+	        + '<div class="chatbot-config-history-actions">'
+	        +   '<button type="button" class="chatbot-config-secondary" data-pq-open-scope="' + escapePqText(session.scope_key) + '">' + active + '</button>'
+	        +   '<button type="button" class="chatbot-config-delete" data-pq-delete-scope="' + escapePqText(session.scope_key) + '">Delete</button>'
+	        + '</div>'
 	        + '</div>';
 	    }).join('') + '</div>';
 	  }
@@ -2859,6 +2894,29 @@ if (pForm && subBtn) {
 	    thread.appendChild(wrap);
 	    wrap.querySelector('#pqMemoryClose').addEventListener('click', function () { wrap.remove(); });
 	    wrap.addEventListener('click', async function (e) {
+	      var deleteBtn = e.target.closest('[data-pq-delete-scope]');
+	      if (deleteBtn) {
+	        e.stopPropagation();
+	        var scopeKey = deleteBtn.getAttribute('data-pq-delete-scope');
+	        if (!confirm('Delete this saved chat permanently?')) return;
+	        deleteBtn.disabled = true;
+	        deleteBtn.textContent = 'Deleting...';
+	        try {
+	          await deleteAccountPqHistory(scopeKey);
+	          if (scopeKey === chatMemoryScopeKey) {
+	            setPqActiveScope(makePqConversationScopeKey());
+	            hist = [];
+	            clearPqChatUi();
+	          }
+	          var refreshed = await loadAccountPqSessions();
+	          var listEl2 = wrap.querySelector('#pqSessionList');
+	          if (listEl2) listEl2.innerHTML = buildPqSessionListHtml(refreshed);
+	        } catch (err) {
+	          deleteBtn.disabled = false;
+	          deleteBtn.textContent = 'Delete';
+	        }
+	        return;
+	      }
 	      var btn = e.target.closest('[data-pq-open-scope]');
 	      if (!btn) return;
 	      btn.disabled = true;
@@ -3055,10 +3113,7 @@ if (pForm && subBtn) {
 	    return data;
 	  }
 
-	  async function resetPqChatHistory() {
-	    setPqActiveScope(makePqConversationScopeKey());
-	    hist = [];
-	    try { localStorage.removeItem(chatStorageKey); } catch (e) {}
+	  function clearPqChatUi() {
 	    if (typeof pqHideQuoteBtn === 'function') pqHideQuoteBtn();
 	    if (thread) thread.innerHTML = '';
 	    var initPills = document.getElementById('initialSuggestions');
@@ -3067,6 +3122,22 @@ if (pForm && subBtn) {
 	      buildSuggestionPills();
 	    }
 	    preferencePillsShown = false;
+	  }
+
+	  async function resetPqChatHistory() {
+	    setPqActiveScope(makePqConversationScopeKey());
+	    hist = [];
+	    try { localStorage.removeItem(chatStorageKey); } catch (e) {}
+	    clearPqChatUi();
+	  }
+
+	  async function deleteCurrentPqChat() {
+	    var deletedScope = chatMemoryScopeKey;
+	    await deleteAccountPqHistory(deletedScope);
+	    setPqActiveScope(makePqConversationScopeKey());
+	    hist = [];
+	    try { localStorage.removeItem(chatStorageKey); } catch (e) {}
+	    clearPqChatUi();
 	  }
 
 	  function maybeShowPreferencePills() {
@@ -3098,8 +3169,9 @@ if (pForm && subBtn) {
 	      +   '<div class="chatbot-config-history-actions">'
 	      +     '<button type="button" class="chatbot-config-secondary" id="pqConfigViewMemory">View Past Chats</button>'
 	      +     '<button type="button" class="chatbot-config-reset" id="pqConfigReset">New Chat</button>'
+	      +     '<button type="button" class="chatbot-config-delete" id="pqConfigDelete">Delete Current Chat</button>'
 	      +   '</div>'
-	      +   '<div class="chatbot-config-hint">Starts fresh while keeping past chats available in Chat Memory.</div>'
+	      +   '<div class="chatbot-config-hint">New Chat starts fresh while keeping history. Delete Current Chat removes this conversation permanently.</div>'
 	      + '</div>'
 	      + '<div class="chatbot-config-actions">'
 	      +   '<button type="button" class="chatbot-config-apply" id="pqConfigApply">Apply</button>'
@@ -3144,6 +3216,20 @@ if (pForm && subBtn) {
 	        resetBtn.disabled = false;
 	        resetBtn.textContent = 'New Chat';
 	        showPqConfigError(wrap, 'Could not start a new chat. Please try again.');
+	      }
+	    });
+	    wrap.querySelector('#pqConfigDelete').addEventListener('click', async function () {
+	      if (!confirm('Delete the current chat permanently? This cannot be undone.')) return;
+	      var deleteBtn = this;
+	      deleteBtn.disabled = true;
+	      deleteBtn.textContent = 'Deleting...';
+	      showPqConfigError(wrap, '');
+	      try {
+	        await deleteCurrentPqChat();
+	      } catch (e) {
+	        deleteBtn.disabled = false;
+	        deleteBtn.textContent = 'Delete Current Chat';
+	        showPqConfigError(wrap, 'Could not delete this chat. Please try again.');
 	      }
 	    });
 	    wrap.querySelector('#pqConfigViewMemory').addEventListener('click', function () {
