@@ -5059,15 +5059,72 @@ def logout():
 # Routes: Subscription
 # ---------------------------------------------------------------------------
 
-@app.route("/pricing")
-def pricing():
+def _build_pricing_template_context():
     plan_config = _load_subscription_plan_config()
     premium = plan_config["premium"]
+    ai_daily_limit = GENERAL_DAILY_AI_ANSWER_LIMIT
+
+    general_plan_features = [
+        {"label": "Price predictions", "included": True},
+        {"label": "Save up to 3 predictions", "included": True},
+        {
+            "label": "Interactive map",
+            "detail": f"{GENERAL_WEEKLY_VIEW_LIMITS.get('map', 3)} views/week",
+            "included": True,
+        },
+        {
+            "label": "Analytics dashboard",
+            "detail": f"{GENERAL_WEEKLY_VIEW_LIMITS.get('analytics', 3)} views/week",
+            "included": True,
+        },
+        {
+            "label": "Comparison tool",
+            "detail": f"{GENERAL_WEEKLY_VIEW_LIMITS.get('comparison', 3)} views/week",
+            "included": True,
+        },
+        {
+            "label": "AI answers",
+            "detail": f"{ai_daily_limit} per day, short replies",
+            "included": True,
+        },
+        {"label": "No conversation memory", "included": False},
+        {"label": "No reply style customisation", "included": False},
+    ]
+    premium_plan_features = [
+        {
+            "label": "Unlimited AI chat",
+            "detail": "no daily cap",
+            "included": True,
+            "emphasized": True,
+        },
+        {"label": "Longer, more detailed AI replies", "included": True},
+        {
+            "label": "Multi-turn memory",
+            "detail": "AI remembers your conversation",
+            "included": True,
+        },
+        {
+            "label": "Customise reply style",
+            "detail": "detailed or bullet points",
+            "included": True,
+        },
+        *({"label": benefit, "included": True} for benefit in premium["benefits"]),
+    ]
+
+    return {
+        "premium_plan": premium,
+        "premium_price_display": f"${premium['price_monthly']:.2f}",
+        "ai_daily_limit": ai_daily_limit,
+        "general_plan_features": general_plan_features,
+        "premium_plan_features": premium_plan_features,
+    }
+
+
+@app.route("/pricing")
+def pricing():
     return render_template(
         "pricing.html",
-        premium_plan=premium,
-        premium_price_display=f"${premium['price_monthly']:.2f}",
-        ai_daily_limit=GENERAL_DAILY_AI_ANSWER_LIMIT,
+        **_build_pricing_template_context(),
     )
 
 
@@ -5272,8 +5329,6 @@ def landing():
             return redirect(url_for("home"))
         _mark_registered_landing_seen(user_id)
 
-    plan_config = _load_subscription_plan_config()
-    premium = plan_config["premium"]
     try:
         town_coords = _build_town_coords_lookup()
     except Exception:
@@ -5286,9 +5341,7 @@ def landing():
         "landing.html",
         landing_stats=_build_landing_stats(),
         landing_prediction_previews=landing_prediction_previews,
-        premium_plan=premium,
-        premium_price_display=f"${premium['price_monthly']:.2f}",
-        ai_daily_limit=GENERAL_DAILY_AI_ANSWER_LIMIT,
+        **_build_pricing_template_context(),
     )
 
 

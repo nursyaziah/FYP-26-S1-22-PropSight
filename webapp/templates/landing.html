@@ -3036,17 +3036,19 @@
                     <div class="pricing-card">
                         <h4 class="fw-bold mb-2">General</h4>
                         <h2 class="price-value mb-5">Free</h2>
-                        <a href="/register" class="btn btn-outline-custom w-100 btn-custom py-3 fs-6">Get Started</a>
+                        <a href="{{ url_for('register') }}" class="btn btn-outline-custom w-100 btn-custom py-3 fs-6">Get Started</a>
 
                         <ul class="check-list mt-5">
-                            <li><i class="bi bi-check-circle-fill text-dark opacity-25"></i> Price predictions</li>
-                            <li><i class="bi bi-check-circle-fill text-dark opacity-25"></i> Save up to 3 predictions</li>
-                            <li><i class="bi bi-check-circle-fill text-dark opacity-25"></i> Interactive map (3 views/week)</span></li>
-                            <li><i class="bi bi-check-circle-fill text-dark opacity-25"></i> Analytics dashboard (3 views/week)</span></li>
-                            <li><i class="bi bi-check-circle-fill text-dark opacity-25"></i> Comparison tool (3 views/week)</span></li>
-                            <li><i class="bi bi-check-circle-fill text-dark opacity-25"></i> AI answers ({{ ai_daily_limit }} per day, short replies)</span></li>
-                            <li><i class="bi bi-x-lg text-danger flex-shrink-0"></i><span class="text-muted fw-normal">No conversation memory</span></li>
-                            <li><i class="bi bi-x-lg text-danger flex-shrink-0"></i><span class="text-muted fw-normal">No reply style customisation</span></li>
+                            {% for feature in general_plan_features %}
+                            <li>
+                                {% if feature.included %}
+                                <i class="bi bi-check-circle-fill text-dark opacity-25"></i>
+                                {{ feature.label }}{% if feature.detail %} ({{ feature.detail }}){% endif %}
+                                {% else %}
+                                <i class="bi bi-x-lg text-danger flex-shrink-0"></i><span class="text-muted fw-normal">{{ feature.label }}</span>
+                                {% endif %}
+                            </li>
+                            {% endfor %}
                         </ul>
                     </div>
                 </div>
@@ -3055,20 +3057,21 @@
                     <div class="pricing-card pro">
                         <div class="pro-badge">RECOMMENDED</div>
                         <h4 class="fw-bold text-primary mb-2">{{ premium_plan.name }}</h4>
+                        <p class="text-gray mb-4 fw-medium">{{ premium_plan.description }}</p>
                         <div class="d-flex align-items-baseline mb-5">
                             <h2 class="price-value mb-0 text-dark">{{ premium_price_display }}</h2>
                             <span class="text-gray ms-2 fw-bold">{{ premium_plan.billing_period }}</span>
                         </div>
-                        <a href="/register?plan=premium"
+                        <a href="{{ url_for('register', plan='premium') }}"
                             class="btn btn-primary-custom w-100 btn-custom py-3 fs-6">Sign Up &amp; Upgrade</a>
 
                         <ul class="check-list mt-5">
-                            <li><i class="bi bi-check-circle-fill text-primary"></i> <strong>Unlimited AI chat</strong> — no daily cap</li>
-                            <li><i class="bi bi-check-circle-fill text-primary"></i> Longer, more detailed AI replies</li>
-                            <li><i class="bi bi-check-circle-fill text-primary"></i> Multi-turn memory — AI remembers your conversation</li>
-                            <li><i class="bi bi-check-circle-fill text-primary"></i> Customise reply style (detailed or bullet points)</li>
-                            {% for benefit in premium_plan.benefits %}
-                            <li><i class="bi bi-check-circle-fill text-primary"></i> {{ benefit }}</li>
+                            {% for feature in premium_plan_features %}
+                            <li>
+                                <i class="bi bi-check-circle-fill text-primary"></i>
+                                {% if feature.emphasized %}<strong>{{ feature.label }}</strong>{% else %}{{ feature.label }}{% endif %}
+                                {% if feature.detail %} ({{ feature.detail }}){% endif %}
+                            </li>
                             {% endfor %}
                         </ul>
                     </div>

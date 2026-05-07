@@ -23,14 +23,16 @@
                         <span class="display-4 fw-bold">Free</span>
                     </div>
                     <ul class="list-unstyled mb-4 flex-grow-1">
-                        <li class="mb-2"><i class="bi bi-check-lg text-success me-2"></i>Price predictions</li>
-                        <li class="mb-2"><i class="bi bi-check-lg text-success me-2"></i>Save up to 3 predictions</li>
-                        <li class="mb-2"><i class="bi bi-check-lg text-success me-2"></i>Interactive map <span class="text-muted">(3 views/week)</span></li>
-                        <li class="mb-2"><i class="bi bi-check-lg text-success me-2"></i>Analytics dashboard <span class="text-muted">(3 views/week)</span></li>
-                        <li class="mb-2"><i class="bi bi-check-lg text-success me-2"></i>Comparison tool <span class="text-muted">(3 views/week)</span></li>
-                        <li class="mb-2"><i class="bi bi-check-lg text-success me-2"></i>AI answers <span class="text-muted">({{ ai_daily_limit }} per day, short replies)</span></li>
-                        <li class="mb-2"><i class="bi bi-x-lg text-danger me-2"></i><span class="text-muted">No conversation memory</span></li>
-                        <li class="mb-2"><i class="bi bi-x-lg text-danger me-2"></i><span class="text-muted">No reply style customisation</span></li>
+                        {% for feature in general_plan_features %}
+                        <li class="mb-2">
+                            {% if feature.included %}
+                            <i class="bi bi-check-lg text-success me-2"></i>{{ feature.label }}
+                            {% if feature.detail %}<span class="text-muted">({{ feature.detail }})</span>{% endif %}
+                            {% else %}
+                            <i class="bi bi-x-lg text-danger me-2"></i><span class="text-muted">{{ feature.label }}</span>
+                            {% endif %}
+                        </li>
+                        {% endfor %}
                     </ul>
                     {% if not g.user %}
                     <a href="{{ url_for('register') }}" class="btn btn-outline-primary w-100">Get Started</a>
@@ -58,12 +60,12 @@
                         <span class="text-muted">{{ premium_plan.billing_period }}</span>
                     </div>
                     <ul class="list-unstyled mb-4 flex-grow-1">
-                        <li class="mb-2"><i class="bi bi-check-lg text-success me-2"></i><strong>Unlimited AI chat</strong> — no daily cap</li>
-                        <li class="mb-2"><i class="bi bi-check-lg text-success me-2"></i>Longer, more detailed AI replies</li>
-                        <li class="mb-2"><i class="bi bi-check-lg text-success me-2"></i>Multi-turn memory — AI remembers your conversation</li>
-                        <li class="mb-2"><i class="bi bi-check-lg text-success me-2"></i>Customise reply style (detailed or bullet points)</li>
-                        {% for benefit in premium_plan.benefits %}
-                        <li class="mb-2"><i class="bi bi-check-lg text-success me-2"></i>{{ benefit }}</li>
+                        {% for feature in premium_plan_features %}
+                        <li class="mb-2">
+                            <i class="bi bi-check-lg text-success me-2"></i>
+                            {% if feature.emphasized %}<strong>{{ feature.label }}</strong>{% else %}{{ feature.label }}{% endif %}
+                            {% if feature.detail %}<span class="text-muted">({{ feature.detail }})</span>{% endif %}
+                        </li>
                         {% endfor %}
                     </ul>
                     {% if g.user and g.user.get('subscription_tier') == 'premium' %}
