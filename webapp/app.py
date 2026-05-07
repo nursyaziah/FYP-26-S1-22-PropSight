@@ -72,7 +72,7 @@ if "__main__" in _sys.modules and not hasattr(_sys.modules["__main__"], "Ensembl
 
 
 # ---------------------------------------------------------------------------
-def _ttl_cache(maxsize=128, ttl=3600):
+def _ttl_cache(maxsize=128, ttl=3600, cache_empty=True):
     """lru_cache replacement that expires entries after *ttl* seconds."""
     def decorator(fn):
         _cache = {}
@@ -89,6 +89,8 @@ def _ttl_cache(maxsize=128, ttl=3600):
                 _cache.pop(oldest_key, None)
                 _timestamps.pop(oldest_key, None)
             result = fn(*args)
+            if not cache_empty and result in (None, [], {}, ()):
+                return result
             _cache[args] = result
             _timestamps[args] = now
             return result
@@ -2693,7 +2695,7 @@ def _get_district_summary_data():
         return []
 
 
-@_ttl_cache(maxsize=1, ttl=3600)
+@_ttl_cache(maxsize=1, ttl=3600, cache_empty=False)
 def _get_district_comparison_data():
     try:
         return _supabase_rpc("rpc_api_district_comparison") or []
@@ -6299,7 +6301,7 @@ def api_price_trend():
 @app.route("/api/price_trend_simple")
 @api_login_required
 def api_price_trend_simple():
-    """Yearly average price trend."""
+    """Yearly price trend with median price and PSF-compatible fields."""
     town = request.args.get("town", "")
     flat_type = request.args.get("flat_type", "")
     street_name = request.args.get("street_name", "")
@@ -6353,7 +6355,7 @@ def api_street_price_trend():
 @app.route("/api/district_comparison")
 @api_login_required
 def api_district_comparison():
-    """Return per-town avg prices for the most recent year."""
+    """Return per-town benchmark prices for the recent comparison window."""
     try:
         return jsonify(_get_district_comparison_data())
     except SupabaseError:

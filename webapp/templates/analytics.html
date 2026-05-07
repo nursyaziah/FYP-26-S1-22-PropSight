@@ -1483,9 +1483,9 @@
 
     <!-- ② TOP 4 KPI BAR ─────────────────────────────────────────────────── -->
     <div class="dash-kpi-bar mb-3">
-        <!-- Avg Resale Price -->
+        <!-- Median Resale Price -->
         <div class="dash-kpi-card kpi-accent-blue">
-            <div class="kpi-label-sm">Area Average Price</div>
+            <div class="kpi-label-sm">Area Median Price</div>
             <div id="kpiAvgPrice" class="kpi-val-lg">—</div>
             <div class="kpi-delta-row">
                 <i id="kpiAvgPriceArrow" class="bi bi-dash text-muted"></i>
@@ -1493,9 +1493,9 @@
                 <span class="kpi-delta-vs">vs last year</span>
             </div>
         </div>
-        <!-- Avg PSF -->
+        <!-- Median PSF -->
         <div class="dash-kpi-card kpi-accent-sky">
-            <div class="kpi-label-sm">Avg PSF</div>
+            <div class="kpi-label-sm">Median $/sqm</div>
             <div id="kpiPsfVal" class="kpi-val-lg">—</div>
             <div class="kpi-delta-row">
                 <i id="kpiPsfArrow" class="bi bi-dash text-muted"></i>
@@ -1620,7 +1620,7 @@
                         <h6 class="mb-1" style="font-size:0.95rem; font-weight:700;">
                             <i class="bi bi-graph-up me-2 text-primary"></i>Area Price Trend vs Your Estimate
                         </h6>
-                        <p class="chart-note">How your predicted value compares to historical averages in the same area.</p>
+                        <p class="chart-note">How your predicted value compares to historical medians in the same area.</p>
                         <div class="chart-container-tall"><canvas id="trendVsPredictionChart"></canvas></div>
                     </div>
                 </div>
@@ -1645,7 +1645,7 @@
                                 </div>
                                 <div class="position-range-labels">
                                     <span id="posLabelLow">—</span>
-                                    <span id="posLabelAvg" class="text-center">Area Avg</span>
+                                    <span id="posLabelAvg" class="text-center">Area Median</span>
                                     <span id="posLabelHigh" class="text-end">—</span>
                                 </div>
                             </div>
@@ -1656,7 +1656,7 @@
                                     <div class="position-metric-value text-primary" id="posYourPrice">—</div>
                                 </div>
                                 <div class="position-metric">
-                                    <div class="position-metric-label" id="posAreaAvgLabel">Comparable Avg</div>
+                                    <div class="position-metric-label" id="posAreaAvgLabel">Comparable Median</div>
                                     <div class="position-metric-value" id="posAreaAvg">—</div>
                                 </div>
                                 <div class="position-metric">
@@ -1733,6 +1733,12 @@
                             <i class="bi bi-graph-up-arrow me-2 text-primary"></i>Price Trend
                         </h5>
                         <p class="chart-note">Historical resale performance across the selected scope and year window.</p>
+                        <div class="d-flex align-items-center gap-2 mb-3">
+                            <div class="btn-group btn-group-sm" id="trendMetricToggle" role="group" aria-label="Price metric toggle">
+                                <button type="button" class="btn btn-primary active" data-metric="absolute" onclick="setTrendMetric('absolute', this)">Absolute Price</button>
+                                <button type="button" class="btn btn-outline-primary" data-metric="psf" onclick="setTrendMetric('psf', this)">Median $/sqm</button>
+                            </div>
+                        </div>
                         <div id="focusSummary" class="summary-card mb-3">
                             <h6>No location selected</h6>
                             <p class="text-muted mb-0" style="font-size:0.84rem;">Choose a town to narrow the analytics scope. Use the filters above to drill into a specific street or block.</p>
@@ -1763,10 +1769,10 @@
                                     </h5>
                                     <p id="futurePredCaption" class="chart-note">AI-estimated prices for the selected scope over the next five years.</p>
                                     <div class="chart-container"><canvas id="futurePredChart"></canvas></div>
-                                    <p class="forecast-assumption mt-2 mb-0" style="font-size:12px;color:#64748b;line-height:1.5;">
-                                        <i class="bi bi-info-circle me-1"></i>
-                                        Future-year estimates assume current interest rate and market conditions hold. They isolate the effect of lease decay and property ageing, not a forecast of the broader market.
-                                    </p>
+                                    <div class="alert alert-warning d-flex align-items-start gap-2 mt-3 mb-0 py-2 px-3" style="font-size:0.82rem; border-radius:10px; border-left: 4px solid #f59e0b;">
+                                        <i class="bi bi-exclamation-triangle-fill text-warning mt-1 flex-shrink-0"></i>
+                                        <div><strong>What-if projection.</strong> This assumes today's interest rates and market conditions stay about the same, so the chart mainly shows how lease decay and flat ageing may affect value. It is not a wider Singapore market forecast or financial advice.</div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1792,10 +1798,10 @@
                                             <tbody id="forecastTableBody"></tbody>
                                         </table>
                                     </div>
-                                    <p class="forecast-assumption mt-2 mb-0" style="font-size:12px;color:#64748b;line-height:1.5;">
-                                        <i class="bi bi-info-circle me-1"></i>
-                                        Future-year estimates assume current interest rate and market conditions hold. They isolate the effect of lease decay and property ageing, not a forecast of the broader market.
-                                    </p>
+                                    <div class="alert alert-warning d-flex align-items-start gap-2 mt-3 mb-0 py-2 px-3" style="font-size:0.82rem; border-radius:10px; border-left: 4px solid #f59e0b;">
+                                        <i class="bi bi-exclamation-triangle-fill text-warning mt-1 flex-shrink-0"></i>
+                                        <div><strong>What-if projection.</strong> This assumes today's interest rates and market conditions stay about the same, so the chart mainly shows how lease decay and flat ageing may affect value. It is not a wider Singapore market forecast or financial advice.</div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1850,9 +1856,9 @@
                             <div class="card-body">
                                 <div class="section-kicker">Within-Town Value Density</div>
                                 <h5 id="areaPsfTitle" class="mb-1" style="font-size:1.05rem; font-weight:700;">
-                                    <i class="bi bi-cash-stack me-2 text-primary"></i>Area Price per sqm
+                                    <i class="bi bi-cash-stack me-2 text-primary"></i>Area Median $/sqm
                                 </h5>
-                                <p id="areaPsfSubtitle" class="chart-note">Street-level price density inside the selected town.</p>
+                                <p id="areaPsfSubtitle" class="chart-note">Median street-level price density inside the selected town.</p>
                                 <div style="height:420px;"><canvas id="areaPsfChart"></canvas></div>
                                 <div id="areaPsfRankNote" class="homeowner-note d-none"></div>
                             </div>
@@ -1882,9 +1888,9 @@
                             <div class="card-body">
                                 <div class="section-kicker">Value Density</div>
                                 <h5 id="psfTitle" class="mb-1" style="font-size:1.05rem; font-weight:700;">
-                                    <i class="bi bi-cash-stack me-2 text-primary"></i>District Price per sqm
+                                    <i class="bi bi-cash-stack me-2 text-primary"></i>District Median $/sqm
                                 </h5>
-                                <p id="psfSubtitle" class="chart-note">Average town-level price per square metre for the current benchmark set.</p>
+                                <p id="psfSubtitle" class="chart-note">Median town-level price per square metre for the current benchmark set.</p>
                                 <div style="height:420px;"><canvas id="psfChart"></canvas></div>
                                 <div id="psfRankNote" class="homeowner-note d-none"></div>
                             </div>
@@ -1985,7 +1991,7 @@
             <!-- Mini KPI 2×2 -->
             <div class="rail-mini-grid">
                 <div class="rail-mini-card">
-                    <div class="rail-mini-label">Price/sqm</div>
+                    <div class="rail-mini-label">Median $/sqm</div>
                     <div id="railKpiPsm" class="rail-mini-value">—</div>
                 </div>
                 <div class="rail-mini-card">
@@ -2167,6 +2173,7 @@
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.9/dist/purify.min.js"></script>
 <script>
 /* ── Chart instances ──────────────────────────────────────────────────────── */
+let priceTrendMode = 'absolute';
 let priceTrendChart;
 let flatTypeChart;
 let areaChart;
@@ -2413,6 +2420,52 @@ function buildMyFlatContext() {
 
 function formatMoney(value) {
     return '$' + Number(value || 0).toLocaleString();
+}
+
+const METRIC_FIELD_ALIASES = {
+    median_price: ['median_price', 'median', 'avg_price'],
+    avg_price: ['avg_price', 'median_price'],
+    psf: ['median_psf', 'psf', 'avg_psf', 'price_per_sqm', 'recent_psf'],
+    median_psf: ['median_psf', 'psf', 'avg_psf', 'price_per_sqm', 'recent_psf'],
+    avg_psf: ['median_psf', 'avg_psf', 'psf', 'price_per_sqm', 'recent_psf'],
+};
+
+function metricValue(row, field, fallback = 0) {
+    const keys = METRIC_FIELD_ALIASES[field] || [field];
+    for (const key of keys) {
+        if (!row || row[key] === undefined || row[key] === null || row[key] === '') continue;
+        const value = Number(row[key]);
+        if (Number.isFinite(value)) return value;
+    }
+    return fallback;
+}
+
+function hasMetricValue(row, field) {
+    const value = metricValue(row, field, null);
+    return value !== null && value > 0;
+}
+
+function priceMetricValue(row, fallback = 0) {
+    return metricValue(row, 'median_price', fallback);
+}
+
+function hasPriceMetric(row) {
+    return hasMetricValue(row, 'median_price');
+}
+
+function isPsfMetric(field) {
+    return ['psf', 'median_psf', 'avg_psf', 'price_per_sqm', 'recent_psf'].includes(field);
+}
+
+function formatPsf(value) {
+    return '$' + Math.round(Number(value || 0)).toLocaleString() + '/sqm';
+}
+
+function medianNumber(values) {
+    const nums = (values || []).map(Number).filter(v => Number.isFinite(v) && v > 0).sort((a, b) => a - b);
+    if (!nums.length) return 0;
+    const mid = Math.floor(nums.length / 2);
+    return nums.length % 2 ? nums[mid] : (nums[mid - 1] + nums[mid]) / 2;
 }
 
 function wrapChartLabel(label, maxCharsPerLine = 14) {
@@ -3158,7 +3211,7 @@ function setHomeownerNote(id, html, isWarning) {
     el.innerHTML = html;
 }
 
-function updateBenchmarkRankNote(noteId, rows, labelField, selectedLabel, metricLabel) {
+function updateBenchmarkRankNote(noteId, rows, labelField, selectedLabel, metricLabel, valueField = 'avg_price') {
     if (!rows || !rows.length) {
         setHomeownerNote(noteId, '', false);
         return;
@@ -3179,9 +3232,8 @@ function updateBenchmarkRankNote(noteId, rows, labelField, selectedLabel, metric
         return;
     }
     const row = rows[idx];
-    const value = metricLabel.indexOf('PSF') >= 0 || metricLabel.indexOf('sqm') >= 0
-        ? '$' + Math.round(Number(row.psf || 0)).toLocaleString() + '/sqm'
-        : formatMoney(row.avg_price);
+    const metric = metricValue(row, valueField);
+    const value = isPsfMetric(valueField) ? formatPsf(metric) : formatMoney(metric);
     setHomeownerNote(
         noteId,
         '<strong>' + escapeHtml(selectedLabel) + '</strong> ranks <strong>#' + (idx + 1) +
@@ -3212,8 +3264,8 @@ function setMarketPulse(data) {
     // Price Momentum: map -20%…+20% to 0…100%
     let momentumPct = 50;
     if (data.length >= 2) {
-        const prev = Number(data[data.length - 2].avg_price || 0);
-        const curr = Number(data[data.length - 1].avg_price || 0);
+        const prev = priceMetricValue(data[data.length - 2]);
+        const curr = priceMetricValue(data[data.length - 1]);
         const pctChange = prev ? ((curr - prev) / prev) * 100 : 0;
         momentumPct = Math.max(0, Math.min(100, Math.round((pctChange + 20) / 40 * 100)));
     }
@@ -3255,20 +3307,18 @@ function setKpis(data) {
         return;
     }
 
-    const avgPrice = Math.round(
-        data.reduce((sum, item) => sum + Number(item.avg_price || 0), 0) / data.length
-    );
+    const latestMedian = Math.round(priceMetricValue(data[data.length - 1]));
     const txns = data.reduce((sum, item) => sum + Number(item.txn_count || 0), 0);
     const midpoint = Math.round(
-        data.reduce((sum, item) => sum + ((Number(item.min_price || 0) + Number(item.max_price || 0)) / 2), 0) / data.length
+        medianNumber(data.map(item => priceMetricValue(item, null)))
     );
 
     let momentum = 'Stable';
     let pricePct = null;
     let txnPct = null;
     if (data.length >= 2) {
-        const prevPrice = Number(data[data.length - 2].avg_price || 0);
-        const currPrice = Number(data[data.length - 1].avg_price || 0);
+        const prevPrice = priceMetricValue(data[data.length - 2]);
+        const currPrice = priceMetricValue(data[data.length - 1]);
         pricePct = prevPrice ? ((currPrice - prevPrice) / prevPrice) * 100 : null;
         if (pricePct !== null) {
             if (pricePct > 3)       momentum = 'Rising '   + Math.abs(pricePct).toFixed(1) + '%';
@@ -3280,7 +3330,7 @@ function setKpis(data) {
         txnPct = prevTxn ? ((currTxn - prevTxn) / prevTxn) * 100 : null;
     }
 
-    clear('kpiAvgPrice', formatMoney(avgPrice));
+    clear('kpiAvgPrice', formatMoney(latestMedian));
     clear('kpiTxn',      txns.toLocaleString());
     clear('kpiMomentum', momentum);
     clear('kpiMid',      formatMoney(midpoint));
@@ -3315,11 +3365,11 @@ function updateFocusSummary(data) {
         : 'Forecast uses representative flat type';
     let predictionLine = '';
     const predicted = predictionSeed && predictionSeed.predicted_price ? parseFloat(predictionSeed.predicted_price) : null;
-    const latestAvg = Number(data[data.length - 1].avg_price || 0);
-    if (predicted && latestAvg) {
-        const diffPct = ((predicted - latestAvg) / latestAvg) * 100;
+    const latestMedian = priceMetricValue(data[data.length - 1]);
+    if (predicted && latestMedian) {
+        const diffPct = ((predicted - latestMedian) / latestMedian) * 100;
         predictionLine = ' Your estimate is <strong>' + Math.abs(diffPct).toFixed(1) + '%</strong> ' +
-            (diffPct >= 0 ? 'above' : 'below') + ' the latest area average.';
+            (diffPct >= 0 ? 'above' : 'below') + ' the latest area median.';
     }
     summaryEl.innerHTML =
         '<h6>' + escapeHtml(locationLabel) + '</h6>' +
@@ -3345,8 +3395,8 @@ function buildTrendInsightHtml() {
     if (!latestTrendData.length) {
         return '<span class="text-muted">No price trend data in the selected year range.</span>';
     }
-    const first = Number(latestTrendData[0].avg_price || 0);
-    const last  = Number(latestTrendData[latestTrendData.length - 1].avg_price || 0);
+    const first = priceMetricValue(latestTrendData[0]);
+    const last  = priceMetricValue(latestTrendData[latestTrendData.length - 1]);
     const trendPct = first ? ((last - first) / first) * 100 : 0;
     let direction = 'sideways trend';
     if (trendPct > 3) direction = 'uptrend';
@@ -3392,14 +3442,14 @@ function buildFlatTypeInsightHtml() {
     }
     const totalTxns = latestFlatTypeData.reduce((sum, row) => sum + Number(row.txn_count || 0), 0);
     const topByVolume = latestFlatTypeData.slice().sort((a, b) => Number(b.txn_count || 0) - Number(a.txn_count || 0))[0];
-    const topByPrice = latestFlatTypeData.slice().sort((a, b) => Number(b.avg_price || 0) - Number(a.avg_price || 0))[0];
+    const topByPrice = latestFlatTypeData.slice().sort((a, b) => priceMetricValue(b) - priceMetricValue(a))[0];
     const share = totalTxns ? (Number(topByVolume.txn_count || 0) / totalTxns) * 100 : 0;
 
     return '<strong>' + escapeHtml(topByVolume.flat_type || 'Unknown flat type') + '</strong> leads the mix with <strong>' +
         share.toFixed(1) + '%</strong> of transactions (' + Number(topByVolume.txn_count || 0).toLocaleString() +
-        ' deals). The highest average resale price comes from <strong>' +
+        ' deals). The highest median resale price comes from <strong>' +
         escapeHtml(topByPrice.flat_type || 'Unknown flat type') + '</strong> at <strong>' +
-        formatMoney(topByPrice.avg_price) + '</strong>.';
+        formatMoney(priceMetricValue(topByPrice)) + '</strong>.';
 }
 
 function buildDistrictInsightHtml() {
@@ -3414,6 +3464,7 @@ function buildDistrictInsightHtml() {
     if (!rows.length) {
         return '<span class="text-muted">No benchmark data is available for the current comparison.</span>';
     }
+    const priceField = 'median_price';
 
     const filters = getFilters();
     const high = rows[0];
@@ -3425,27 +3476,30 @@ function buildDistrictInsightHtml() {
         ? rows.findIndex(row => String(row[labelField] || '') === selectedLabel)
         : -1;
     const topPsfRow = psfRows[0] || null;
-    const spreadPct = Number(low.avg_price || 0)
-        ? ((Number(high.avg_price || 0) - Number(low.avg_price || 0)) / Number(low.avg_price || 0)) * 100
+    const highPrice = metricValue(high, priceField);
+    const lowPrice = metricValue(low, priceField);
+    const spreadPct = lowPrice
+        ? ((highPrice - lowPrice) / lowPrice) * 100
         : 0;
 
     if (selectedIndex >= 0) {
         const selectedRow = rows[selectedIndex];
+        const selectedPrice = metricValue(selectedRow, priceField);
         return '<strong>' + escapeHtml(selectedLabel) + '</strong> ranks <strong>#' +
             String(selectedIndex + 1) + '</strong> of ' + String(rows.length) + ' in this benchmark at <strong>' +
-            formatMoney(selectedRow.avg_price) + '</strong>. Leader <strong>' +
-            escapeHtml(high[labelField] || '-') + '</strong> sits at ' + formatMoney(high.avg_price) +
+            formatMoney(selectedPrice) + '</strong>. Leader <strong>' +
+            escapeHtml(high[labelField] || '-') + '</strong> sits at ' + formatMoney(highPrice) +
             ', and the overall price spread is <strong>' + spreadPct.toFixed(1) + '%</strong>' +
             (topPsfRow ? '. Top price per sqm is ' + escapeHtml(topPsfRow[labelField] || topPsfRow.town || topPsfRow.street_name || '-') +
-                ' at <strong>$' + Math.round(Number(topPsfRow.psf || 0)).toLocaleString() + '</strong>.' : '.');
+                ' at <strong>' + formatPsf(metricValue(topPsfRow, 'psf')) + '</strong>.' : '.');
     }
 
     return '<strong>' + escapeHtml(high[labelField] || '-') + '</strong> leads the current benchmark at <strong>' +
-        formatMoney(high.avg_price) + '</strong>, versus <strong>' + escapeHtml(low[labelField] || '-') +
-        '</strong> at ' + formatMoney(low.avg_price) + '. The spread across this comparison set is <strong>' +
+        formatMoney(highPrice) + '</strong>, versus <strong>' + escapeHtml(low[labelField] || '-') +
+        '</strong> at ' + formatMoney(lowPrice) + '. The spread across this comparison set is <strong>' +
         spreadPct.toFixed(1) + '%</strong>' +
-        (topPsfRow ? ', and the top price per sqm is <strong>$' +
-            Math.round(Number(topPsfRow.psf || 0)).toLocaleString() + '</strong>.' : '.');
+        (topPsfRow ? ', and the top price per sqm is <strong>' +
+            formatPsf(metricValue(topPsfRow, 'psf')) + '</strong>.' : '.');
 }
 
 function buildVolumeInsightHtml() {
@@ -3473,16 +3527,18 @@ function buildLeaseInsightHtml() {
     if (!latestLeaseDecayData.length) {
         return '<span class="text-muted">Lease decay data is loading or unavailable for this predicted flat.</span>';
     }
-    const high = latestLeaseDecayData.slice().sort((a, b) => Number(b.avg_price || 0) - Number(a.avg_price || 0))[0];
-    const low = latestLeaseDecayData.slice().sort((a, b) => Number(a.avg_price || 0) - Number(b.avg_price || 0))[0];
-    const gapPct = Number(low.avg_price || 0)
-        ? ((Number(high.avg_price || 0) - Number(low.avg_price || 0)) / Number(low.avg_price || 0)) * 100
+    const high = latestLeaseDecayData.slice().sort((a, b) => priceMetricValue(b) - priceMetricValue(a))[0];
+    const low = latestLeaseDecayData.slice().sort((a, b) => priceMetricValue(a) - priceMetricValue(b))[0];
+    const highPrice = priceMetricValue(high);
+    const lowPrice = priceMetricValue(low);
+    const gapPct = lowPrice
+        ? ((highPrice - lowPrice) / lowPrice) * 100
         : 0;
 
     return '<strong>' + escapeHtml(high.lease_bucket || high.bucket || high.label || 'Longer leases') +
-        '</strong> show the strongest pricing at <strong>' + formatMoney(high.avg_price) + '</strong>. Compared with <strong>' +
+        '</strong> show the strongest median pricing at <strong>' + formatMoney(highPrice) + '</strong>. Compared with <strong>' +
         escapeHtml(low.lease_bucket || low.bucket || low.label || 'shorter leases') + '</strong> at ' +
-        formatMoney(low.avg_price) + ', the observed lease-decay gap is <strong>' +
+        formatMoney(lowPrice) + ', the observed lease-decay gap is <strong>' +
         gapPct.toFixed(1) + '%</strong>.';
 }
 
@@ -3491,16 +3547,16 @@ function buildMyFlatInsightHtml() {
     if (!predicted || !predictionSeed.town) {
         return buildTrendInsightHtml();
     }
-    const avgText = document.getElementById('kpiAvgPrice').textContent.replace(/[$,]/g, '');
-    const avg = parseFloat(avgText);
-    if (!avg || isNaN(avg)) {
+    const medianText = document.getElementById('kpiAvgPrice').textContent.replace(/[$,]/g, '');
+    const median = parseFloat(medianText);
+    if (!median || isNaN(median)) {
         return '<strong>' + escapeHtml(predictionSeed.town) + '</strong> prediction context is available, but the market baseline has not loaded yet.';
     }
-    const diffPct = ((predicted - avg) / avg) * 100;
+    const diffPct = ((predicted - median) / median) * 100;
 
     return 'Your predicted value for <strong>' + escapeHtml(getInsightLocationLabel()) + '</strong> is <strong>' +
         formatMoney(predicted) + '</strong>, which is <strong>' + Math.abs(diffPct).toFixed(1) + '%</strong> ' +
-        (diffPct >= 0 ? 'above' : 'below') + ' the current area average of ' + formatMoney(avg) + '.';
+        (diffPct >= 0 ? 'above' : 'below') + ' the current area median of ' + formatMoney(median) + '.';
 }
 
 function renderActiveRailInsight() {
@@ -3596,6 +3652,17 @@ function setLoading(canvasId, loading) {
     loading ? card.classList.add('is-loading') : card.classList.remove('is-loading');
 }
 
+/* ── Price Trend metric toggle ────────────────────────────────────────────── */
+function setTrendMetric(mode, btn) {
+    priceTrendMode = mode;
+    document.querySelectorAll('#trendMetricToggle .btn').forEach(b => {
+        b.classList.toggle('active', b === btn);
+        b.classList.toggle('btn-primary', b === btn);
+        b.classList.toggle('btn-outline-primary', b !== btn);
+    });
+    loadPriceTrend();
+}
+
 /* ── Price Trend chart ────────────────────────────────────────────────────── */
 async function loadPriceTrend() {
     setLoading('priceTrendChart', true);
@@ -3612,17 +3679,24 @@ async function loadPriceTrend() {
         const ctx  = document.getElementById('priceTrendChart').getContext('2d');
         const type = document.getElementById('trendStyle').value;
         if (priceTrendChart) priceTrendChart.destroy();
+
+        const isPsf = priceTrendMode === 'psf';
+        const trendLabel  = isPsf ? 'Median $/sqm' : 'Median Price';
+        const trendValues = isPsf
+            ? data.map(d => metricValue(d, 'median_psf'))
+            : data.map(d => metricValue(d, 'median_price'));
+
         const predictedPrice = predictionSeed && predictionSeed.predicted_price ? parseFloat(predictionSeed.predicted_price) : null;
         const trendDatasets = [{
-            label: 'Average Price',
-            data:  data.map(d => d.avg_price),
+            label: trendLabel,
+            data:  trendValues,
             borderColor: '#2563eb',
             backgroundColor: type === 'line' ? 'rgba(37,99,235,0.14)' : 'rgba(37,99,235,0.78)',
             fill: type === 'line',
             tension: 0.28,
             borderRadius: 5,
         }];
-        if (predictedPrice && data.length) {
+        if (predictedPrice && data.length && !isPsf) {
             trendDatasets.push({
                 label: 'Your Estimate',
                 data: data.map(() => predictedPrice),
@@ -3644,11 +3718,11 @@ async function loadPriceTrend() {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    tooltip: { callbacks: { label: tCtx => ' Price: ' + formatMoney(tCtx.parsed.y) } },
+                    tooltip: { callbacks: { label: tCtx => isPsf ? ' $/sqm: $' + Math.round(tCtx.parsed.y).toLocaleString() : ' Price: ' + formatMoney(tCtx.parsed.y) } },
                     legend:  { display: false }
                 },
                 scales: {
-                    y: { ticks: { callback: v => '$' + (v / 1000).toFixed(0) + 'K' } }
+                    y: { ticks: { callback: v => isPsf ? '$' + Math.round(v).toLocaleString() : '$' + (v / 1000).toFixed(0) + 'K' } }
                 }
             }
         });
@@ -3702,7 +3776,7 @@ async function loadFlatType() {
                             label: tCtx => {
                                 const row = data.find(d => d.flat_type === tCtx.label);
                                 if (!row) return '';
-                                return ' ' + Number(row.txn_count||0).toLocaleString() + ' txns (avg ' + formatMoney(row.avg_price) + ')';
+                                return ' ' + Number(row.txn_count||0).toLocaleString() + ' txns (median ' + formatMoney(priceMetricValue(row)) + ')';
                             }
                         }
                     }
@@ -3723,7 +3797,7 @@ async function loadFlatType() {
                     '<div class="flat-type-dot" style="background:' + COLORS[i % COLORS.length] + '"></div>' +
                     '<div class="flat-type-name">' + escapeHtml(row.flat_type) + '</div>' +
                     '<div class="flat-type-pct">' + pct + '%</div>' +
-                    '<div class="flat-type-avg">' + formatMoney(row.avg_price) + '</div>' +
+                    '<div class="flat-type-avg">' + formatMoney(priceMetricValue(row)) + '</div>' +
                     '</div>';
             }).join('');
             if (selectedRow) {
@@ -3731,8 +3805,8 @@ async function loadFlatType() {
                 setHomeownerNote(
                     'flatTypePersonalNote',
                     '<strong>' + escapeHtml(selectedFlatType) + '</strong> makes up <strong>' +
-                    selectedPct + '%</strong> of recent transactions in this scope, with an average price of <strong>' +
-                    formatMoney(selectedRow.avg_price) + '</strong>.',
+                    selectedPct + '%</strong> of recent transactions in this scope, with a median price of <strong>' +
+                    formatMoney(priceMetricValue(selectedRow)) + '</strong>.',
                     false
                 );
             } else {
@@ -3769,17 +3843,18 @@ function renderHorizontalBenchmarkChart(existingChart, canvasId, rows, labelFiel
     if (!canvas) return existingChart;
     if (existingChart) existingChart.destroy();
     const ctx = canvas.getContext('2d');
+    const chartRows = (rows || []).filter(row => hasMetricValue(row, valueField));
     return new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: rows.map(row => labelField === 'street_name'
+                labels: chartRows.map(row => labelField === 'street_name'
                     ? wrapChartLabel(row[labelField], 14)
                     : String(row[labelField] || '')
                 ),
                 datasets: [{
                     label: datasetLabel,
-                    data:  rows.map(row => row[valueField]),
-                    backgroundColor: rows.map((row, i) => {
+                    data:  chartRows.map(row => metricValue(row, valueField)),
+                    backgroundColor: chartRows.map((row, i) => {
                         if (labelField === 'street_name' && selectedLabel && row[labelField] === selectedLabel) return '#2563eb';
                         if (labelField === 'town' && selectedLabel && row[labelField] === selectedLabel) return '#2563eb';
                         return labelField === 'street_name' ? COLORS[i % COLORS.length] : colorBase;
@@ -3799,10 +3874,10 @@ function renderHorizontalBenchmarkChart(existingChart, canvasId, rows, labelFiel
                 },
                 plugins: {
                     legend:  { display: false },
-                    tooltip: { callbacks: { label: tCtx => ' ' + tooltipLabel + ': ' + (valueField === 'psf' ? '$' + Number(tCtx.parsed.x || 0).toLocaleString() + '/sqm' : formatMoney(tCtx.parsed.x)) } }
+                    tooltip: { callbacks: { label: tCtx => ' ' + tooltipLabel + ': ' + (isPsfMetric(valueField) ? formatPsf(tCtx.parsed.x) : formatMoney(tCtx.parsed.x)) } }
                 },
                 scales: {
-                    x: { ticks: { callback: v => valueField === 'psf' ? '$' + Number(v || 0).toLocaleString() : '$' + (v / 1000).toFixed(0) + 'K' } },
+                    x: { ticks: { callback: v => isPsfMetric(valueField) ? '$' + Math.round(v || 0).toLocaleString() : '$' + (v / 1000).toFixed(0) + 'K' } },
                     y: getHorizontalCategoryAxisOptions(labelField)
                 }
             }
@@ -3830,13 +3905,14 @@ async function loadAreaComparison() {
         if (filters.flat_type) params.set('flat_type', filters.flat_type);
         const rows = await fetchJSON('/api/street_price_trend?' + params.toString());
         const chartRows = buildStreetSnapshots(rows)
-            .sort((a, b) => Number(b.avg_price || 0) - Number(a.avg_price || 0))
+            .filter(row => hasPriceMetric(row))
+            .sort((a, b) => priceMetricValue(b) - priceMetricValue(a))
             .slice(0, 12);
         const selectedLabel = predictionSeed.town === filters.town ? (predictionSeed.street_name || '') : '';
 
         if (titleEl) titleEl.innerHTML = '<i class="bi bi-signpost-split me-2 text-primary"></i>Area Comparison Within ' + escapeHtml(filters.town);
-        if (subtitleEl) subtitleEl.textContent = 'Compares streets as the available area unit inside the selected town. Hover or tap a bar to inspect the average price.';
-        areaChart = renderHorizontalBenchmarkChart(areaChart, 'areaChart', chartRows, 'street_name', selectedLabel, 'avg_price', 'Average Price', 'Avg Price', 'rgba(100,116,139,0.72)');
+        if (subtitleEl) subtitleEl.textContent = 'Compares streets as the available area unit inside the selected town. Hover or tap a bar to inspect the median price.';
+        areaChart = renderHorizontalBenchmarkChart(areaChart, 'areaChart', chartRows, 'street_name', selectedLabel, 'median_price', 'Median Price', 'Median', 'rgba(100,116,139,0.72)');
 
         latestAreaBenchmarkData = chartRows;
         latestAreaComparisonMeta = { rows: chartRows, labelField: 'street_name' };
@@ -3849,7 +3925,8 @@ async function loadAreaComparison() {
             chartRows,
             'street_name',
             selectedLabel,
-            'average area price'
+            'median area price',
+            'median_price'
         );
         return latestAreaComparisonMeta;
     } catch (e) {
@@ -3871,12 +3948,13 @@ async function loadDistrictComparison() {
     try {
         const chartRows = (await fetchJSON('/api/district_comparison'))
             .slice()
-            .sort((a, b) => Number(b.avg_price || 0) - Number(a.avg_price || 0));
+            .filter(row => hasMetricValue(row, 'median_price'))
+            .sort((a, b) => metricValue(b, 'median_price') - metricValue(a, 'median_price'));
         const selectedLabel = filters.town || '';
 
         if (titleEl) titleEl.innerHTML = '<i class="bi bi-globe-asia-australia me-2 text-primary"></i>District Comparison';
-        if (subtitleEl) subtitleEl.textContent = 'Town-to-town benchmark across Singapore HDB resale markets. Selected town is highlighted when available.';
-        districtChart = renderHorizontalBenchmarkChart(districtChart, 'districtChart', chartRows, 'town', selectedLabel, 'avg_price', 'Average Price', 'Avg Price', 'rgba(100,116,139,0.72)');
+        if (subtitleEl) subtitleEl.textContent = 'Town-to-town median price benchmark (last 2 years). Selected town is highlighted when available.';
+        districtChart = renderHorizontalBenchmarkChart(districtChart, 'districtChart', chartRows, 'town', selectedLabel, 'median_price', 'Median Price', 'Median', 'rgba(100,116,139,0.72)');
 
         latestDistrictBenchmarkData = chartRows;
         latestDistrictComparisonMeta = { rows: chartRows, labelField: 'town' };
@@ -3884,7 +3962,7 @@ async function loadDistrictComparison() {
             latestBenchmarkData = chartRows;
             latestComparisonMeta = latestDistrictComparisonMeta;
         }
-        updateBenchmarkRankNote('districtRankNote', chartRows, 'town', selectedLabel, 'average town price');
+        updateBenchmarkRankNote('districtRankNote', chartRows, 'town', selectedLabel, 'median town price', 'median_price');
         return latestDistrictComparisonMeta;
     } catch (e) {
         latestDistrictBenchmarkData = [];
@@ -3930,7 +4008,7 @@ async function loadVolume() {
         setHomeownerNote(
             'volumeSampleWarning',
             lowVolume
-                ? '<strong>Low activity warning:</strong> at least one year has fewer than 20 resale transactions, so averages may be less stable.'
+                ? '<strong>Low activity warning:</strong> at least one year has fewer than 20 resale transactions, so median prices may be less stable.'
                 : '',
             true
         );
@@ -3944,15 +4022,15 @@ async function loadVolume() {
 /* ── PSF charts ───────────────────────────────────────────────────────────── */
 function updatePsfKpis(rows) {
     if (!rows || !rows.length) return;
-    const avgPsf = Math.round(rows.reduce((s, r) => s + Number(r.psf || 0), 0) / rows.length);
+    const medianPsf = Math.round(medianNumber(rows.map(row => metricValue(row, 'psf', null))));
     const railPsm = document.getElementById('railKpiPsm');
-    if (railPsm) railPsm.textContent = avgPsf ? '$' + avgPsf.toLocaleString() : '—';
+    if (railPsm) railPsm.textContent = medianPsf ? '$' + medianPsf.toLocaleString() : '—';
     const psfTop = document.getElementById('kpiPsfVal');
-    if (psfTop) psfTop.textContent = avgPsf ? '$' + avgPsf.toLocaleString() : '—';
+    if (psfTop) psfTop.textContent = medianPsf ? '$' + medianPsf.toLocaleString() : '—';
 
     if (rows.length >= 2) {
-        const topPsf  = Number(rows[0].psf || 0);
-        const lastPsf = Number(rows[rows.length - 1].psf || 0);
+        const topPsf  = metricValue(rows[0], 'psf');
+        const lastPsf = metricValue(rows[rows.length - 1], 'psf');
         const psfPct  = lastPsf ? ((topPsf - lastPsf) / lastPsf) * 100 : null;
         setChangeIndicator('kpiPsfChange', 'kpiPsfArrow', psfPct);
     }
@@ -3967,8 +4045,8 @@ async function loadAreaPSF() {
         if (!filters.town) {
             if (areaPsfChart) { areaPsfChart.destroy(); areaPsfChart = null; }
             latestAreaPsfData = [];
-            if (titleEl) titleEl.innerHTML = '<i class="bi bi-cash-stack me-2 text-primary"></i>Area Price per sqm';
-            if (subtitleEl) subtitleEl.textContent = 'Select a town to compare street-level price density.';
+            if (titleEl) titleEl.innerHTML = '<i class="bi bi-cash-stack me-2 text-primary"></i>Area Median $/sqm';
+            if (subtitleEl) subtitleEl.textContent = 'Select a town to compare median street-level price density.';
             setHomeownerNote('areaPsfRankNote', '', false);
             return [];
         }
@@ -3977,17 +4055,18 @@ async function loadAreaPSF() {
         params.set('town', filters.town);
         if (filters.flat_type) params.set('flat_type', filters.flat_type);
         const rows = buildStreetSnapshots(await fetchJSON('/api/street_price_trend?' + params.toString()))
-            .sort((a, b) => Number(b.psf || 0) - Number(a.psf || 0))
+            .filter(row => hasMetricValue(row, 'psf'))
+            .sort((a, b) => metricValue(b, 'psf') - metricValue(a, 'psf'))
             .slice(0, 12);
         const selectedLabel = predictionSeed.town === filters.town ? (predictionSeed.street_name || '') : '';
 
-        if (titleEl) titleEl.innerHTML = '<i class="bi bi-cash-stack me-2 text-primary"></i>Area Price per sqm';
-        if (subtitleEl) subtitleEl.textContent = 'Street-level price density inside the selected town.';
+        if (titleEl) titleEl.innerHTML = '<i class="bi bi-cash-stack me-2 text-primary"></i>Area Median $/sqm';
+        if (subtitleEl) subtitleEl.textContent = 'Median street-level price per square metre inside the selected town.';
         areaPsfChart = renderHorizontalBenchmarkChart(areaPsfChart, 'areaPsfChart', rows, 'street_name', selectedLabel, 'psf', '$/sqm', '$/sqm', 'rgba(37,99,235,0.82)');
 
         latestAreaPsfData = rows;
         if (activeInsightSection === 'area') latestPsfData = rows;
-        updateBenchmarkRankNote('areaPsfRankNote', rows, 'street_name', selectedLabel, 'area PSF');
+        updateBenchmarkRankNote('areaPsfRankNote', rows, 'street_name', selectedLabel, 'area median $/sqm', 'psf');
         return rows;
     } catch (e) {
         latestAreaPsfData = [];
@@ -4007,17 +4086,18 @@ async function loadPSF() {
     try {
         const rows = (await fetchJSON('/api/district_comparison'))
             .slice()
-            .sort((a, b) => Number(b.psf || 0) - Number(a.psf || 0));
+            .filter(row => hasMetricValue(row, 'psf'))
+            .sort((a, b) => metricValue(b, 'psf') - metricValue(a, 'psf'));
         const selectedLabel = filters.town || '';
 
-        if (titleEl) titleEl.innerHTML = '<i class="bi bi-cash-stack me-2 text-primary"></i>District Price per sqm';
-        if (subtitleEl) subtitleEl.textContent = 'Town-to-town price per square metre benchmark.';
+        if (titleEl) titleEl.innerHTML = '<i class="bi bi-cash-stack me-2 text-primary"></i>District Median $/sqm';
+        if (subtitleEl) subtitleEl.textContent = 'Town-to-town median price per square metre benchmark.';
         psfChart = renderHorizontalBenchmarkChart(psfChart, 'psfChart', rows, 'town', selectedLabel, 'psf', '$/sqm', '$/sqm', 'rgba(37,99,235,0.82)');
 
         latestDistrictPsfData = rows;
         if (activeInsightSection === 'district') latestPsfData = rows;
         updatePsfKpis(rows);
-        updateBenchmarkRankNote('psfRankNote', rows, 'town', selectedLabel, 'town PSF');
+        updateBenchmarkRankNote('psfRankNote', rows, 'town', selectedLabel, 'town median $/sqm', 'psf');
         return rows;
     } catch (e) {
         latestDistrictPsfData = [];
@@ -4206,16 +4286,16 @@ function updateMyflatVsAvg() {
     const el = document.getElementById('myflatVsAvg');
     if (!el) return;
     const predicted = parseFloat(predictionSeed.predicted_price);
-    const avgText = document.getElementById('kpiAvgPrice').textContent.replace(/[$,]/g, '');
-    const avg = parseFloat(avgText);
-    if (!predicted || !avg || isNaN(avg)) { el.textContent = ''; return; }
-    const diff = ((predicted - avg) / avg * 100).toFixed(1);
+    const medianText = document.getElementById('kpiAvgPrice').textContent.replace(/[$,]/g, '');
+    const median = parseFloat(medianText);
+    if (!predicted || !median || isNaN(median)) { el.textContent = ''; return; }
+    const diff = ((predicted - median) / median * 100).toFixed(1);
     if (diff > 0) {
-        el.innerHTML = '<span class="text-success"><i class="bi bi-arrow-up-short"></i>' + diff + '% above area average</span>';
+        el.innerHTML = '<span class="text-success"><i class="bi bi-arrow-up-short"></i>' + diff + '% above area median</span>';
     } else if (diff < 0) {
-        el.innerHTML = '<span class="text-danger"><i class="bi bi-arrow-down-short"></i>' + Math.abs(diff) + '% below area average</span>';
+        el.innerHTML = '<span class="text-danger"><i class="bi bi-arrow-down-short"></i>' + Math.abs(diff) + '% below area median</span>';
     } else {
-        el.innerHTML = '<span class="text-muted">At area average</span>';
+        el.innerHTML = '<span class="text-muted">At area median</span>';
     }
 }
 
@@ -4227,18 +4307,18 @@ function updateMyflatPosition() {
     const empty = document.getElementById('myflatPositionEmpty');
     const avgLabelEl = document.getElementById('posAreaAvgLabel');
 
-    const avgText = document.getElementById('kpiAvgPrice').textContent.replace(/[$,]/g, '');
-    const avg = parseFloat(avgText);
+    const medianText = document.getElementById('kpiAvgPrice').textContent.replace(/[$,]/g, '');
+    const areaMedian = parseFloat(medianText);
     const comparablePrices = (latestPredictionRecentTransactions || [])
         .map(row => Number(row && row.resale_price))
         .filter(value => Number.isFinite(value) && value > 0);
 
     const hasComparableData = comparablePrices.length > 0;
-    const benchmarkAvg = hasComparableData
-        ? comparablePrices.reduce((sum, value) => sum + value, 0) / comparablePrices.length
-        : avg;
+    const benchmarkMedian = hasComparableData
+        ? medianNumber(comparablePrices)
+        : areaMedian;
 
-    if (!benchmarkAvg || isNaN(benchmarkAvg)) {
+    if (!benchmarkMedian || isNaN(benchmarkMedian)) {
         if (card) card.classList.add('d-none');
         if (empty) empty.classList.remove('d-none');
         return;
@@ -4247,12 +4327,12 @@ function updateMyflatPosition() {
     if (card) card.classList.remove('d-none');
     if (empty) empty.classList.add('d-none');
 
-    const comparableLow = hasComparableData ? Math.min(...comparablePrices) : benchmarkAvg * 0.7;
-    const comparableHigh = hasComparableData ? Math.max(...comparablePrices) : benchmarkAvg * 1.3;
+    const comparableLow = hasComparableData ? Math.min(...comparablePrices) : benchmarkMedian * 0.7;
+    const comparableHigh = hasComparableData ? Math.max(...comparablePrices) : benchmarkMedian * 1.3;
     const rangeLow = Math.min(comparableLow, predicted);
     const rangeHigh = Math.max(comparableHigh, predicted);
-    const paddedLow = rangeHigh > rangeLow ? rangeLow : Math.max(0, benchmarkAvg * 0.9);
-    const paddedHigh = rangeHigh > rangeLow ? rangeHigh : benchmarkAvg * 1.1;
+    const paddedLow = rangeHigh > rangeLow ? rangeLow : Math.max(0, benchmarkMedian * 0.9);
+    const paddedHigh = rangeHigh > rangeLow ? rangeHigh : benchmarkMedian * 1.1;
     const clampedPct = Math.max(5, Math.min(95,
         ((predicted - paddedLow) / (paddedHigh - paddedLow)) * 100
     ));
@@ -4260,23 +4340,23 @@ function updateMyflatPosition() {
     document.getElementById('posRangeFill').style.width = clampedPct + '%';
     document.getElementById('posMarker').style.left = clampedPct + '%';
     document.getElementById('posLabelLow').textContent = formatMoney(Math.round(rangeLow));
-    document.getElementById('posLabelAvg').textContent = 'Avg: ' + formatMoney(Math.round(benchmarkAvg));
+    document.getElementById('posLabelAvg').textContent = 'Median: ' + formatMoney(Math.round(benchmarkMedian));
     document.getElementById('posLabelHigh').textContent = formatMoney(Math.round(rangeHigh));
 
     document.getElementById('posYourPrice').textContent = formatMoney(predicted);
-    document.getElementById('posAreaAvg').textContent = formatMoney(Math.round(benchmarkAvg));
+    document.getElementById('posAreaAvg').textContent = formatMoney(Math.round(benchmarkMedian));
     if (avgLabelEl) {
-        avgLabelEl.textContent = hasComparableData ? 'Comparable Avg' : 'Area Average';
+        avgLabelEl.textContent = hasComparableData ? 'Comparable Median' : 'Area Median';
     }
 
-    const diffPct = ((predicted - benchmarkAvg) / benchmarkAvg * 100).toFixed(1);
+    const diffPct = ((predicted - benchmarkMedian) / benchmarkMedian * 100).toFixed(1);
     const diffEl = document.getElementById('posDiff');
     if (diffPct > 0) {
         diffEl.innerHTML = '<span class="text-success">+' + diffPct + '% above</span>';
     } else if (diffPct < 0) {
         diffEl.innerHTML = '<span class="text-danger">' + diffPct + '% below</span>';
     } else {
-        diffEl.innerHTML = '<span class="text-muted">At average</span>';
+        diffEl.innerHTML = '<span class="text-muted">At median</span>';
     }
 
     const floorArea = parseFloat(predictionSeed.floor_area);
@@ -4387,8 +4467,8 @@ async function loadTrendVsPrediction() {
                 labels: data.map(d => d.year),
                 datasets: [
                     {
-                        label: 'Area Average',
-                        data: data.map(d => d.avg_price),
+                        label: 'Area Median',
+                        data: data.map(d => priceMetricValue(d)),
                         borderColor: '#2563eb',
                         backgroundColor: 'rgba(37,99,235,0.12)',
                         fill: true, tension: 0.28,
@@ -4439,7 +4519,7 @@ async function loadPredictionContext() {
         latestLeaseDecayData = decay;
         if (decay.length) {
             const labels = decay.map(d => d.lease_bucket || d.bucket || d.label);
-            const prices = decay.map(d => d.avg_price);
+            const prices = decay.map(d => priceMetricValue(d));
             const counts = decay.map(d => d.txn_count || 0);
 
             const leaseCanvas = document.getElementById('leaseDecayChart');
@@ -4460,7 +4540,7 @@ async function loadPredictionContext() {
                     type: 'bar',
                     data: {
                         labels: labels,
-                        datasets: [{ label: 'Average Price', data: prices, backgroundColor: decay.map((_, i) => COLORS[i % COLORS.length]), borderRadius: 6 }]
+                        datasets: [{ label: 'Median Price', data: prices, backgroundColor: decay.map((_, i) => COLORS[i % COLORS.length]), borderRadius: 6 }]
                     },
                     options: {
                         responsive: true, maintainAspectRatio: false,
@@ -4564,20 +4644,22 @@ function buildSuggestedQuestionGroups() {
     const flatType = filters.flat_type || predictionSeed.flat_type || 'this flat type';
     const remainingLease = getPredictionRemainingLease();
     const predictedPrice = predictionSeed && predictionSeed.predicted_price ? parseFloat(predictionSeed.predicted_price) : null;
-    const avgText = document.getElementById('kpiAvgPrice') ? document.getElementById('kpiAvgPrice').textContent.replace(/[$,]/g, '') : '';
-    const avgPrice = avgText ? parseFloat(avgText) : null;
+    const medianText = document.getElementById('kpiAvgPrice') ? document.getElementById('kpiAvgPrice').textContent.replace(/[$,]/g, '') : '';
+    const medianPrice = medianText ? parseFloat(medianText) : null;
     const latest = latestTrendData.length ? latestTrendData[latestTrendData.length - 1] : null;
     const prev = latestTrendData.length >= 2 ? latestTrendData[latestTrendData.length - 2] : null;
     const latestTxns = latest ? Number(latest.txn_count || 0) : 0;
-    const pricePct = latest && prev && Number(prev.avg_price || 0)
-        ? ((Number(latest.avg_price || 0) - Number(prev.avg_price || 0)) / Number(prev.avg_price || 0)) * 100
+    const prevPrice = prev ? priceMetricValue(prev) : 0;
+    const latestPrice = latest ? priceMetricValue(latest) : 0;
+    const pricePct = latest && prev && prevPrice
+        ? ((latestPrice - prevPrice) / prevPrice) * 100
         : null;
 
     const value = [];
-    if (predictedPrice && avgPrice && avgPrice > 0) {
-        value.push(predictedPrice >= avgPrice
-            ? 'Why is my estimate above the area average?'
-            : 'Why is my estimate below the area average?');
+    if (predictedPrice && medianPrice && medianPrice > 0) {
+        value.push(predictedPrice >= medianPrice
+            ? 'Why is my estimate above the area median?'
+            : 'Why is my estimate below the area median?');
     }
     if (pricePct !== null) {
         value.push(pricePct >= 0
@@ -4626,13 +4708,13 @@ function collectChartDataSummary() {
         ? latestDistrictPsfData
         : (latestDistrictPsfData.length ? latestDistrictPsfData : latestAreaPsfData);
     return {
-        trend:     latestTrendData.map(d => ({ year: d.year, avg_price: d.avg_price, txn_count: d.txn_count })),
+        trend:     latestTrendData.map(d => ({ year: d.year, avg_price: priceMetricValue(d), median_price: priceMetricValue(d), txn_count: d.txn_count })),
         volume:    latestVolumeData.map(d => ({ year: d.year, txn_count: d.txn_count })),
-        flat_type: latestFlatTypeData.map(d => ({ flat_type: d.flat_type, txn_count: d.txn_count, avg_price: d.avg_price })),
-        benchmark: benchmarkRows.slice(0,10).map(d => ({ label: d.town || d.street_name, avg_price: d.avg_price })),
-        psf:       psfRows.slice(0,10).map(d => ({ label: d.town || d.street_name, psf: d.psf })),
+        flat_type: latestFlatTypeData.map(d => ({ flat_type: d.flat_type, txn_count: d.txn_count, avg_price: priceMetricValue(d), median_price: priceMetricValue(d) })),
+        benchmark: benchmarkRows.slice(0,10).map(d => ({ label: d.town || d.street_name, avg_price: priceMetricValue(d), median_price: priceMetricValue(d) })),
+        psf:       psfRows.slice(0,10).map(d => ({ label: d.town || d.street_name, psf: metricValue(d, 'psf') })),
         forecast:  latestForecastData.map(d => ({ year: d.year, predicted_price: d.predicted_price, price_low: d.price_low, price_high: d.price_high })),
-        lease:     latestLeaseDecayData.map(d => ({ label: d.lease_bucket || d.bucket || d.label, avg_price: d.avg_price, txn_count: d.txn_count })),
+        lease:     latestLeaseDecayData.map(d => ({ label: d.lease_bucket || d.bucket || d.label, avg_price: priceMetricValue(d), median_price: priceMetricValue(d), txn_count: d.txn_count })),
     };
 }
 
@@ -4811,10 +4893,10 @@ if (IS_PREMIUM) {
       const leaseCommence = predictionSeed && predictionSeed.lease_commence ? parseInt(predictionSeed.lease_commence) : null;
       const remainingLease = leaseCommence ? Math.max(0, 99 - (new Date().getFullYear() - leaseCommence)) : null;
       const predictedPrice = predictionSeed && predictionSeed.predicted_price ? parseFloat(predictionSeed.predicted_price) : null;
-      const avgRaw = document.getElementById('kpiAvgPrice') ? document.getElementById('kpiAvgPrice').textContent.replace(/[$,]/g, '') : '';
-      const avgPrice = avgRaw ? parseFloat(avgRaw) : null;
+      const medianRaw = document.getElementById('kpiAvgPrice') ? document.getElementById('kpiAvgPrice').textContent.replace(/[$,]/g, '') : '';
+      const medianPrice = medianRaw ? parseFloat(medianRaw) : null;
       const trendUp = latestTrendData.length >= 2 &&
-          Number(latestTrendData[latestTrendData.length - 1].avg_price) > Number(latestTrendData[0].avg_price);
+          priceMetricValue(latestTrendData[latestTrendData.length - 1]) > priceMetricValue(latestTrendData[0]);
 
       // Lease-sensitive question
       if (remainingLease !== null && remainingLease < 60) {
@@ -4823,12 +4905,12 @@ if (IS_PREMIUM) {
         starters.push('How will my remaining lease affect future resale?');
       }
 
-      // Price vs area average question
-      if (predictedPrice && avgPrice && !isNaN(avgPrice) && avgPrice > 0) {
-        if (predictedPrice > avgPrice * 1.1) {
-          starters.push('Why is my flat priced above the area average?');
-        } else if (predictedPrice < avgPrice * 0.9) {
-          starters.push('Why is my flat below the area average?');
+      // Price vs area median question
+      if (predictedPrice && medianPrice && !isNaN(medianPrice) && medianPrice > 0) {
+        if (predictedPrice > medianPrice * 1.1) {
+          starters.push('Why is my flat priced above the area median?');
+        } else if (predictedPrice < medianPrice * 0.9) {
+          starters.push('Why is my flat below the area median?');
         }
       }
 
