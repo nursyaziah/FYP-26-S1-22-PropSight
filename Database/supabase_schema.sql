@@ -294,23 +294,27 @@ RETURNS TABLE(
     ORDER BY t.name;
 $$;
 
--- Yearly price trend (simple, no percentile)
-CREATE OR REPLACE FUNCTION rpc_api_price_trend_simple(
+-- Yearly price trend with median (industry standard) and PSF metric
+DROP FUNCTION IF EXISTS rpc_api_price_trend_simple(TEXT, TEXT, TEXT, TEXT);
+CREATE FUNCTION rpc_api_price_trend_simple(
     p_town TEXT DEFAULT NULL,
     p_flat_type TEXT DEFAULT NULL,
     p_street_name TEXT DEFAULT NULL,
     p_block TEXT DEFAULT NULL
 )
 RETURNS TABLE(
-    year INTEGER, avg_price DOUBLE PRECISION,
-    min_price DOUBLE PRECISION, max_price DOUBLE PRECISION, txn_count BIGINT
+    year INTEGER, avg_price DOUBLE PRECISION, median_price DOUBLE PRECISION,
+    min_price DOUBLE PRECISION, max_price DOUBLE PRECISION, txn_count BIGINT,
+    avg_psf DOUBLE PRECISION
 ) LANGUAGE SQL STABLE AS $$
     SELECT
         tx.year,
         ROUND(AVG(tx.resale_price)::NUMERIC)::DOUBLE PRECISION,
+        ROUND(percentile_cont(0.5) WITHIN GROUP (ORDER BY tx.resale_price)::NUMERIC)::DOUBLE PRECISION,
         ROUND(MIN(tx.resale_price)::NUMERIC)::DOUBLE PRECISION,
         ROUND(MAX(tx.resale_price)::NUMERIC)::DOUBLE PRECISION,
-        COUNT(*)
+        COUNT(*),
+        ROUND(AVG(tx.resale_price / NULLIF(tx.floor_area_sqm, 0))::NUMERIC)::DOUBLE PRECISION
     FROM transactions tx
     JOIN blocks     b  ON tx.block_id     = b.id
     JOIN towns      t  ON b.town_id       = t.id
@@ -361,24 +365,26 @@ RETURNS TABLE(
     ORDER BY b.street_name, tx.year;
 $$;
 
--- District comparison (most recent year)
-CREATE OR REPLACE FUNCTION rpc_api_district_comparison()
+-- District comparison using a rolling 2-year window (more robust for low-volume towns)
+DROP FUNCTION IF EXISTS rpc_api_district_comparison();
+CREATE FUNCTION rpc_api_district_comparison()
 RETURNS TABLE(
-    town TEXT, avg_price DOUBLE PRECISION, txn_count BIGINT,
-    avg_area DOUBLE PRECISION, psf DOUBLE PRECISION
+    town TEXT, avg_price DOUBLE PRECISION, median_price DOUBLE PRECISION,
+    txn_count BIGINT, avg_area DOUBLE PRECISION, psf DOUBLE PRECISION
 ) LANGUAGE SQL STABLE AS $$
     SELECT
         t.name,
         ROUND(AVG(tx.resale_price)::NUMERIC)::DOUBLE PRECISION,
+        ROUND(percentile_cont(0.5) WITHIN GROUP (ORDER BY tx.resale_price)::NUMERIC)::DOUBLE PRECISION,
         COUNT(*),
         ROUND(AVG(tx.floor_area_sqm)::NUMERIC)::DOUBLE PRECISION,
         ROUND(AVG(tx.resale_price / NULLIF(tx.floor_area_sqm, 0))::NUMERIC)::DOUBLE PRECISION
     FROM transactions tx
     JOIN blocks b ON tx.block_id = b.id
     JOIN towns  t ON b.town_id   = t.id
-    WHERE tx.year = (SELECT MAX(year) FROM transactions)
+    WHERE tx.year >= (SELECT MAX(year) FROM transactions) - 1
     GROUP BY t.name
-    ORDER BY AVG(tx.resale_price) DESC;
+    ORDER BY percentile_cont(0.5) WITHIN GROUP (ORDER BY tx.resale_price) DESC;
 $$;
 
 -- Flat type breakdown for a town or specific address scope.
