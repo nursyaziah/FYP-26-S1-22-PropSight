@@ -1825,7 +1825,8 @@ textarea.chat-inp {
   "street_name": {{ form_data.get('street_name', '') | tojson }},
   "block": {{ form_data.get('block', '') | tojson }},
   "flat_model": {{ form_data.flat_model | tojson }},
-  "lease_commence": {{ form_data.lease_commence | int }}
+  "lease_commence": {{ form_data.lease_commence | int }},
+  "recent_transactions": {{ recent_transactions | tojson }}
   {% if result.market_shock %},
   "market_shock": {{ result.market_shock | tojson }}
   {% endif %}
@@ -2221,7 +2222,7 @@ if (pForm && subBtn) {
         href: buildPredictionAnalyticsLink('district'),
         label: (ctx.town || '').trim() ? 'Open District Comparison for ' + (ctx.town || '').trim() : 'Open District Comparison',
         pattern: /\b(District Comparison|Town Benchmark|town-level context|town level context|nearby towns|other towns)\b/i,
-        triggers: ['nearby', 'district', 'town average', 'nearby town', 'other town', 'district comparison', 'town-level', 'town level']
+        triggers: ['district', 'town average', 'nearby town', 'other town', 'district comparison', 'town-level', 'town level']
       },
       {
         key: 'lease',
@@ -2344,11 +2345,24 @@ if (pForm && subBtn) {
 	    return encodeURIComponent(parts.join('|')).slice(0, 180) || 'default';
 	  }
 	  var chatMemorySurface = 'predict';
-	  var chatMemoryScopeKey = buildPqChatScopeKey();
-	  function buildPqChatStorageKey() {
-	    return 'propsight:predict:aiChat:v1:' + chatStorageUserId + ':' + chatMemoryScopeKey;
+	  var chatMemoryBaseScopeKey = buildPqChatScopeKey();
+	  var chatActiveScopeStorageKey = 'propsight:predict:aiChat:active:v1:' + chatStorageUserId + ':' + chatMemoryBaseScopeKey;
+	  var storedPqActiveScope = '';
+	  try { storedPqActiveScope = localStorage.getItem(chatActiveScopeStorageKey) || ''; } catch (e) {}
+	  var chatMemoryScopeKey = storedPqActiveScope || chatMemoryBaseScopeKey;
+	  function buildPqChatStorageKey(scopeKey) {
+	    return 'propsight:predict:aiChat:v1:' + chatStorageUserId + ':' + (scopeKey || chatMemoryScopeKey);
 	  }
 	  var chatStorageKey = buildPqChatStorageKey();
+	  function makePqConversationScopeKey() {
+	    var token = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+	    return (chatMemoryBaseScopeKey + '::chat::' + token).slice(0, 220);
+	  }
+	  function setPqActiveScope(scopeKey) {
+	    chatMemoryScopeKey = scopeKey || chatMemoryBaseScopeKey;
+	    chatStorageKey = buildPqChatStorageKey(chatMemoryScopeKey);
+	    try { localStorage.setItem(chatActiveScopeStorageKey, chatMemoryScopeKey); } catch (e) {}
+	  }
 
 	  var apiCtx = {
     surface: 'prediction',
@@ -2372,6 +2386,7 @@ if (pForm && subBtn) {
 	      prediction_year: ctx.prediction_year,
 	      prediction_month: ctx.prediction_month,
 	      narrative: ctx.narrative || null,
+      recent_transactions: ctx.recent_transactions || [],
       shap_features: ctx.shap_features || [],
       lease_decay_breakdown: ctx.lease_decay_breakdown || null,
       market_shock: ctx.market_shock || null,
@@ -2716,12 +2731,12 @@ if (pForm && subBtn) {
 	      : [];
 	  }
 
-	  async function loadAccountPqHistory() {
+	  async function loadAccountPqHistory(scopeKey) {
 	    if (!isPrem) return [];
 	    try {
 	      var params = new URLSearchParams({
 	        surface: chatMemorySurface,
-	        scope_key: chatMemoryScopeKey
+	        scope_key: scopeKey || chatMemoryScopeKey
 	      });
 	      var resp = await fetch('/api/ai_chat/memory?' + params.toString(), {
 	        credentials: 'same-origin'
@@ -2729,6 +2744,25 @@ if (pForm && subBtn) {
 	      if (!resp.ok) return [];
 	      var data = await resp.json().catch(function () { return {}; });
 	      return normalizePqHistory(data.history);
+	    } catch (e) {
+	      return [];
+	    }
+	  }
+
+	  async function loadAccountPqSessions() {
+	    if (!isPrem) return [];
+	    try {
+	      var params = new URLSearchParams({
+	        surface: chatMemorySurface,
+	        scope_key: chatMemoryBaseScopeKey,
+	        list: '1'
+	      });
+	      var resp = await fetch('/api/ai_chat/memory?' + params.toString(), {
+	        credentials: 'same-origin'
+	      });
+	      if (!resp.ok) return [];
+	      var data = await resp.json().catch(function () { return {}; });
+	      return Array.isArray(data.sessions) ? data.sessions : [];
 	    } catch (e) {
 	      return [];
 	    }
@@ -2744,19 +2778,6 @@ if (pForm && subBtn) {
 	        surface: chatMemorySurface,
 	        scope_key: chatMemoryScopeKey,
 	        history: hist
-	      })
-	    }).catch(function () {});
-	  }
-
-	  function resetAccountPqHistory() {
-	    if (!isPrem) return;
-	    fetch('/api/ai_chat/memory', {
-	      method: 'DELETE',
-	      headers: { 'Content-Type': 'application/json' },
-	      credentials: 'same-origin',
-	      body: JSON.stringify({
-	        surface: chatMemorySurface,
-	        scope_key: chatMemoryScopeKey
 	      })
 	    }).catch(function () {});
 	  }
@@ -2787,7 +2808,34 @@ if (pForm && subBtn) {
 	    }).join('') + '</div>';
 	  }
 
-	  function appendPqMemoryView() {
+	  function buildPqSessionListHtml(sessions) {
+	    if (!sessions.length) {
+	      return '<div class="chatbot-memory-empty">No past chats yet.</div>';
+	    }
+	    return '<div class="chatbot-memory-list">' + sessions.map(function (session) {
+	      var active = session.scope_key === chatMemoryScopeKey ? 'Current chat' : 'Open chat';
+	      var title = escapePqText(session.title || 'Chat');
+	      var count = Number(session.message_count || 0);
+	      return '<div class="chatbot-memory-turn">'
+	        + '<div class="chatbot-memory-role">' + title + '</div>'
+	        + '<div class="chatbot-memory-text">' + count + ' saved message' + (count === 1 ? '' : 's') + '</div>'
+	        + '<button type="button" class="chatbot-config-secondary" data-pq-open-scope="' + escapePqText(session.scope_key) + '">' + active + '</button>'
+	        + '</div>';
+	    }).join('') + '</div>';
+	  }
+
+	  async function openPqChatSession(scopeKey) {
+	    setPqActiveScope(scopeKey);
+	    hist = await loadAccountPqHistory(scopeKey);
+	    if (!hist.length) hist = loadStoredPqHistory();
+	    try { localStorage.setItem(chatStorageKey, JSON.stringify(hist)); } catch (e) {}
+	    if (typeof pqHideQuoteBtn === 'function') pqHideQuoteBtn();
+	    if (thread) thread.innerHTML = '';
+	    renderPqRestoredHistory();
+	    if (!hist.length) buildSuggestionPills();
+	  }
+
+	  async function appendPqMemoryView() {
 	    var existing = document.getElementById('pqMemoryView');
 	    if (existing) existing.remove();
 	    var wrap = document.createElement('div');
@@ -2798,15 +2846,28 @@ if (pForm && subBtn) {
 	      +   '<span class="chatbot-config-icon"><i class="bi bi-clock-history"></i></span>'
 	      +   '<div>'
 	      +     '<div class="chatbot-config-title">Chat Memory</div>'
-	      +     '<div class="chatbot-config-sub">What this chatbot will send as previous context</div>'
+	      +     '<div class="chatbot-config-sub">Open a past chat or inspect the current context</div>'
 	      +   '</div>'
 	      + '</div>'
+	      + '<div class="chatbot-config-label">Past Chats</div>'
+	      + '<div id="pqSessionList"><div class="chatbot-memory-empty">Loading past chats...</div></div>'
+	      + '<div class="chatbot-config-label" style="margin-top:12px;">Current Context</div>'
 	      + buildPqMemoryHtml()
 	      + '<div class="chatbot-config-actions" style="margin-top:12px;">'
 	      +   '<button type="button" class="chatbot-config-cancel" id="pqMemoryClose">Close</button>'
 	      + '</div>';
 	    thread.appendChild(wrap);
 	    wrap.querySelector('#pqMemoryClose').addEventListener('click', function () { wrap.remove(); });
+	    wrap.addEventListener('click', async function (e) {
+	      var btn = e.target.closest('[data-pq-open-scope]');
+	      if (!btn) return;
+	      btn.disabled = true;
+	      btn.textContent = 'Opening...';
+	      await openPqChatSession(btn.getAttribute('data-pq-open-scope'));
+	    });
+	    var listEl = wrap.querySelector('#pqSessionList');
+	    var sessions = await loadAccountPqSessions();
+	    if (listEl) listEl.innerHTML = buildPqSessionListHtml(sessions);
 	    thread.scrollTop = thread.scrollHeight;
 	  }
 
@@ -2822,6 +2883,13 @@ if (pForm && subBtn) {
 	  async function restorePqChatHistory() {
 	    if (!isPrem) return;
 	    var accountHistory = await loadAccountPqHistory();
+	    if (!accountHistory.length && !storedPqActiveScope) {
+	      var sessions = await loadAccountPqSessions();
+	      if (sessions.length) {
+	        setPqActiveScope(sessions[0].scope_key);
+	        accountHistory = await loadAccountPqHistory();
+	      }
+	    }
 	    hist = accountHistory.length ? accountHistory : loadStoredPqHistory();
 	    if (!hist.length) return;
 	    try { localStorage.setItem(chatStorageKey, JSON.stringify(hist)); } catch (e) {}
@@ -2987,10 +3055,10 @@ if (pForm && subBtn) {
 	    return data;
 	  }
 
-	  function resetPqChatHistory() {
+	  async function resetPqChatHistory() {
+	    setPqActiveScope(makePqConversationScopeKey());
 	    hist = [];
 	    try { localStorage.removeItem(chatStorageKey); } catch (e) {}
-	    resetAccountPqHistory();
 	    if (typeof pqHideQuoteBtn === 'function') pqHideQuoteBtn();
 	    if (thread) thread.innerHTML = '';
 	    var initPills = document.getElementById('initialSuggestions');
@@ -3026,12 +3094,12 @@ if (pForm && subBtn) {
 	      +   '</div>'
 	      + '</div>'
 	      + '<div class="chatbot-config-section chatbot-config-reset-section">'
-	      +   '<div class="chatbot-config-label">Chat History</div>'
+	      +   '<div class="chatbot-config-label">Conversation</div>'
 	      +   '<div class="chatbot-config-history-actions">'
-	      +     '<button type="button" class="chatbot-config-secondary" id="pqConfigViewMemory">View Chat Memory</button>'
-	      +     '<button type="button" class="chatbot-config-reset" id="pqConfigReset">Reset Chat History</button>'
+	      +     '<button type="button" class="chatbot-config-secondary" id="pqConfigViewMemory">View Past Chats</button>'
+	      +     '<button type="button" class="chatbot-config-reset" id="pqConfigReset">New Chat</button>'
 	      +   '</div>'
-	      +   '<div class="chatbot-config-hint">Clears this conversation on this device and restores starter prompts.</div>'
+	      +   '<div class="chatbot-config-hint">Starts fresh while keeping past chats available in Chat Memory.</div>'
 	      + '</div>'
 	      + '<div class="chatbot-config-actions">'
 	      +   '<button type="button" class="chatbot-config-apply" id="pqConfigApply">Apply</button>'
@@ -3064,9 +3132,19 @@ if (pForm && subBtn) {
 	    wrap.querySelector('#pqConfigCancel').addEventListener('click', function () {
 	      wrap.remove();
 	    });
-	    wrap.querySelector('#pqConfigReset').addEventListener('click', function () {
-	      if (!confirm('Reset this chat history?')) return;
-	      resetPqChatHistory();
+	    wrap.querySelector('#pqConfigReset').addEventListener('click', async function () {
+	      if (!confirm('Start a new chat? Your current conversation stays in Chat Memory.')) return;
+	      var resetBtn = this;
+	      resetBtn.disabled = true;
+	      resetBtn.textContent = 'Starting...';
+	      showPqConfigError(wrap, '');
+	      try {
+	        await resetPqChatHistory();
+	      } catch (e) {
+	        resetBtn.disabled = false;
+	        resetBtn.textContent = 'New Chat';
+	        showPqConfigError(wrap, 'Could not start a new chat. Please try again.');
+	      }
 	    });
 	    wrap.querySelector('#pqConfigViewMemory').addEventListener('click', function () {
 	      appendPqMemoryView();

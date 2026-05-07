@@ -348,6 +348,7 @@ AI_CHAT_MAX_TOKENS = 2048
 AI_CHAT_HISTORY_MESSAGE_LIMIT = 20
 AI_CHAT_MEMORY_MESSAGE_LIMIT = 60
 AI_CHAT_MEMORY_SCOPE_CHAR_LIMIT = 220
+AI_CHAT_CONVERSATION_SCOPE_SEPARATOR = "::chat::"
 AI_CHAT_MEMORY_TURN_CHAR_LIMIT = 4000
 AI_CHAT_HISTORY_TURN_CHAR_LIMIT = 2000
 AI_CHAT_HISTORY_TRUNCATION_SUFFIX = "…[truncated]"
@@ -7384,6 +7385,420 @@ def _build_negative_shap_focus(question, features):
     )
 
 
+_NUMBER_WORDS = {
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+}
+
+
+def _requested_reason_count(question, default=3, maximum=5):
+    text = str(question or "").lower()
+    match = re.search(r"\btop\s+([1-9])\b", text)
+    if match:
+        return max(1, min(maximum, int(match.group(1))))
+    match = re.search(r"\btop\s+(one|two|three|four|five)\b", text)
+    if match:
+        return max(1, min(maximum, _NUMBER_WORDS.get(match.group(1), default)))
+    return default
+
+
+def _is_prediction_reason_question(question):
+    text = str(question or "").lower()
+    return bool(
+        re.search(r"\b(top|main|key|possible)\s+([1-9]|one|two|three|four|five)?\s*(reasons?|drivers?|factors?)\b", text)
+        or re.search(r"\bwhat\s+(factors?|drivers?|reasons?)\b.*\b(explain|justify|support|pull|push)", text)
+        or re.search(r"\bwhy\b.*\b(higher|lower|above|below|premium|discount|gap|priced)\b", text)
+        or re.search(r"\b(price|estimate|prediction)\b.*\b(higher|lower|above|below|premium|discount|gap)\b", text)
+        or re.search(r"\bgap\b.*\b(average|transactions?|price|estimate|prediction)", text)
+    )
+
+
+def _is_biggest_prediction_factor_question(question):
+    text = str(question or "").lower()
+    return bool(
+        re.search(r"\b(single\s+)?(biggest|largest|main|strongest|most important)\s+(factor|driver|feature|impact)\b", text)
+        or re.search(r"\bwhich\b.*\b(factor|driver|feature)\b.*\b(biggest|largest|most|strongest)\b", text)
+    )
+
+
+def _is_estimate_reliability_question(question):
+    text = str(question or "").lower()
+    return bool(
+        re.search(r"\b(fair|reasonable|accurate|reliable|trust|trustworthy|uncertain|uncertainty|confidence|range|guaranteed)\b", text)
+        and re.search(r"\b(price|estimate|prediction|valuation|value|flat)\b", text)
+    )
+
+
+def _is_buyer_profile_question(question):
+    text = str(question or "").lower()
+    return bool(
+        re.search(r"\b(who|what\s+type\s+of\s+buyer|buyer\s+profile|buyers?|position|selling|sell)\b", text)
+        and re.search(r"\b(buy|buyer|buyers|care|appeal|resonate|profile|selling|sell|features?)\b", text)
+    )
+
+
+def _recent_transactions_summary(chart_data):
+    if not isinstance(chart_data, dict):
+        return None
+    supplied = chart_data.get("recent_transactions_summary")
+    if isinstance(supplied, dict):
+        avg = _coerce_float(supplied.get("average_price"))
+        count = _coerce_float(supplied.get("txn_count"))
+        if avg is not None and count:
+            return {
+                "label": supplied.get("label") or "recent similar transactions shown",
+                "average_price": int(round(avg)),
+                "txn_count": int(count),
+            }
+
+    rows = chart_data.get("recent_transactions")
+    if not isinstance(rows, list):
+        return None
+    prices = []
+    months = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        price = _coerce_float(row.get("resale_price") or row.get("price"))
+        if price is not None:
+            prices.append(price)
+        month = str(row.get("month") or "").strip()
+        if month:
+            months.append(month)
+    if not prices:
+        return None
+    summary = {
+        "label": "recent similar transactions shown",
+        "average_price": int(round(sum(prices) / len(prices))),
+        "txn_count": len(prices),
+    }
+    if months:
+        summary["latest_month"] = max(months)
+        summary["oldest_month"] = min(months)
+    return summary
+
+
+def _prediction_comparison_reference(chart_data, my_flat):
+    if not isinstance(chart_data, dict):
+        chart_data = {}
+    if not isinstance(my_flat, dict):
+        my_flat = {}
+
+    predicted = _coerce_float(
+        chart_data.get("predicted_price") or my_flat.get("predicted_price")
+    )
+    if predicted is None:
+        return None
+
+    recent = _recent_transactions_summary(chart_data)
+    if recent:
+        avg = _coerce_float(recent.get("average_price"))
+        count = _coerce_float(recent.get("txn_count"))
+        if avg is not None and count:
+            gap = int(round(predicted - avg))
+            pct = ((predicted - avg) / avg * 100) if avg else None
+            return {
+                "label": recent.get("label") or "recent similar transactions shown",
+                "average_price": int(round(avg)),
+                "txn_count": int(count),
+                "gap_dollars": gap,
+                "gap_pct": round(pct, 1) if pct is not None else None,
+                "comparison_type": "recent_transactions",
+            }
+
+    town_avg = _coerce_float(chart_data.get("town_avg_price"))
+    if town_avg is not None and town_avg > 0:
+        gap = int(round(predicted - town_avg))
+        pct = (predicted - town_avg) / town_avg * 100
+        return {
+            "label": "town average for this flat type",
+            "average_price": int(round(town_avg)),
+            "gap_dollars": gap,
+            "gap_pct": round(pct, 1),
+            "comparison_type": "town_average",
+        }
+    return None
+
+
+def _prediction_reason_direction(question, comparison):
+    text = str(question or "").lower()
+    if comparison and _coerce_float(comparison.get("gap_dollars")) is not None:
+        gap = _coerce_float(comparison.get("gap_dollars")) or 0
+        if gap > 0:
+            return "positive"
+        if gap < 0:
+            return "negative"
+    if re.search(r"\b(higher|above|premium|adds?|push(?:es)?\s+up|positive)\b", text):
+        return "positive"
+    if re.search(r"\b(lower|below|discount|drag|reduce|reducing|negative|pull(?:s)?\s+down)\b", text):
+        return "negative"
+    return "absolute"
+
+
+def _prediction_reason_group_key(component):
+    label = str(component.get("label") or "").lower()
+    key = str(component.get("key") or "").lower()
+    combined = f"{key} {label}"
+    if (
+        "recent market price" in combined
+        or re.search(r"\bpsf[_\s-]*(1m|3m|6m)\b", combined)
+        or re.search(r"\b(price|market)[_\s-]*(1m|3m|6m)\b", combined)
+    ):
+        return "recent_market_price_signals"
+    return key or label
+
+
+def _group_prediction_reason_components(components):
+    grouped = []
+    group_map = {}
+    for component in components:
+        group_key = _prediction_reason_group_key(component)
+        if group_key != "recent_market_price_signals":
+            grouped.append(component)
+            continue
+        group = group_map.get(group_key)
+        if group is None:
+            group = dict(component)
+            group["key"] = group_key
+            group["label"] = "Recent market price signals"
+            group["components"] = []
+            group["component_count"] = 0
+            group["explanation_hint"] = (
+                "This combines the visible recent market price windows so the answer "
+                "does not repeat 3-month and 6-month signals as separate reasons."
+            )
+            group_map[group_key] = group
+            grouped.append(group)
+        group["components"].append(component)
+        group["component_count"] += 1
+        group["dollar_impact"] = int(sum(
+            _coerce_float(item.get("dollar_impact"), 0) or 0
+            for item in group["components"]
+        ))
+    return grouped
+
+
+def _rank_reason_components(features, direction, limit):
+    clean = []
+    for item in features or []:
+        impact = _coerce_float(item.get("dollar_impact"))
+        if impact is None or int(round(impact)) == 0:
+            continue
+        if direction == "positive" and impact <= 0:
+            continue
+        if direction == "negative" and impact >= 0:
+            continue
+        compact = _compact_shap_feature_for_focus(item)
+        if compact:
+            clean.append(compact)
+    clean.sort(key=lambda item: abs(item["dollar_impact"]), reverse=True)
+    grouped = _group_prediction_reason_components(clean)
+    grouped.sort(key=lambda item: abs(item["dollar_impact"]), reverse=True)
+    return grouped[:limit]
+
+
+def _build_ranked_prediction_reason_focus(question, chart_data, my_flat, features):
+    if not _is_prediction_reason_question(question):
+        return None
+    requested = _requested_reason_count(question)
+    comparison = _prediction_comparison_reference(chart_data, my_flat)
+    direction = _prediction_reason_direction(question, comparison)
+    components = _rank_reason_components(features, direction, requested)
+    if not components and direction != "absolute":
+        components = _rank_reason_components(features, "absolute", requested)
+    if not components:
+        return None
+
+    predicted = _coerce_float(
+        (chart_data or {}).get("predicted_price") if isinstance(chart_data, dict) else None
+    )
+    if predicted is None and isinstance(my_flat, dict):
+        predicted = _coerce_float(my_flat.get("predicted_price"))
+
+    ranking_basis = {
+        "positive": "positive SHAP drivers because the estimate is above the comparison average",
+        "negative": "negative SHAP drivers because the estimate is below the comparison average",
+    }.get(direction, "largest SHAP drivers by absolute impact")
+
+    focus = {
+        "kind": "ranked_prediction_reasons",
+        "requested_reason_count": requested,
+        "available_reason_count": len(components),
+        "ranking_basis": ranking_basis,
+        "comparison": comparison,
+        "components": components,
+        "check_first": components[0],
+        "instruction": (
+            "Gemini must answer as a ranked numbered list using only the supplied "
+            "components. Start each ranked item with '1.', '2.', '3.' exactly. "
+            "If a component contains nested components, explain it as one reason and "
+            "name the nested component labels without turning them into separate ranked "
+            "reasons. If available_reason_count is lower than requested_reason_count, "
+            "state that only the visible supported factors are listed. If comparison is "
+            "present, open with the predicted price, comparison average, dollar gap, and "
+            "percentage gap; mention txn_count as sample size if supplied. Do not say "
+            "'strong demand'; explain recent market price as recent comparable prices. "
+            "End with what to review first: the check_first component."
+        ),
+    }
+    if predicted is not None:
+        focus["predicted_price"] = int(round(predicted))
+    return focus
+
+
+def _build_biggest_prediction_factor_focus(question, features):
+    if not _is_biggest_prediction_factor_question(question):
+        return None
+    sorted_features = sorted(
+        (
+            item for item in features or []
+            if _coerce_float(item.get("dollar_impact")) is not None
+        ),
+        key=lambda item: abs(_coerce_float(item.get("dollar_impact"), 0) or 0),
+        reverse=True,
+    )
+    top = _compact_shap_feature_for_focus(sorted_features[0]) if sorted_features else None
+    if not top:
+        return None
+    return {
+        "kind": "single_biggest_shap_feature",
+        "feature": top,
+        "instruction": (
+            "Gemini must state this is the single biggest visible SHAP factor by "
+            "absolute dollar impact. Quote the exact label and dollar_impact only, "
+            "then explain what it means in homeowner language. Do not add other "
+            "SHAP dollar amounts."
+        ),
+    }
+
+
+def _build_estimate_reliability_focus(question, chart_data, my_flat, features):
+    if not _is_estimate_reliability_question(question):
+        return None
+    if not isinstance(chart_data, dict):
+        chart_data = {}
+    if not isinstance(my_flat, dict):
+        my_flat = {}
+    predicted = _coerce_float(chart_data.get("predicted_price") or my_flat.get("predicted_price"))
+    price_low = _coerce_float(chart_data.get("price_low"))
+    price_high = _coerce_float(chart_data.get("price_high"))
+    comparison = _prediction_comparison_reference(chart_data, my_flat)
+    sorted_features = sorted(
+        (
+            item for item in features or []
+            if _coerce_float(item.get("dollar_impact")) is not None
+        ),
+        key=lambda item: abs(_coerce_float(item.get("dollar_impact"), 0) or 0),
+        reverse=True,
+    )
+    top_positive = next(
+        (_compact_shap_feature_for_focus(item) for item in sorted_features if (_coerce_float(item.get("dollar_impact")) or 0) > 0),
+        None,
+    )
+    top_negative = next(
+        (_compact_shap_feature_for_focus(item) for item in sorted_features if (_coerce_float(item.get("dollar_impact")) or 0) < 0),
+        None,
+    )
+    focus = {
+        "kind": "estimate_reliability",
+        "comparison": comparison,
+        "top_positive": top_positive,
+        "top_negative": top_negative,
+        "mape": chart_data.get("mape"),
+        "instruction": (
+            "Gemini must frame the estimate as a data-driven second opinion, not a "
+            "guarantee. Start with predicted_price and the range if supplied. Explain "
+            "uncertainty using the range, comparison, and the strongest positive and "
+            "negative SHAP factors. Do not answer yes/no as if the estimate is certain."
+        ),
+    }
+    if predicted is not None:
+        focus["predicted_price"] = int(round(predicted))
+    if price_low is not None and price_high is not None:
+        focus["price_low"] = int(round(price_low))
+        focus["price_high"] = int(round(price_high))
+    return focus
+
+
+def _buyer_priority_matches(my_flat):
+    if not isinstance(my_flat, dict):
+        my_flat = {}
+    matches = []
+    floor_area = _coerce_float(my_flat.get("floor_area"))
+    dist_school = _coerce_float(my_flat.get("dist_school"))
+    flat_type = str(my_flat.get("flat_type") or "").strip().lower()
+    is_mature = bool(my_flat.get("is_mature_estate", my_flat.get("is_mature")))
+    storey_midpoint = _coerce_float(my_flat.get("storey_midpoint"))
+    dist_mrt = _coerce_float(my_flat.get("dist_mrt"))
+    remaining = _coerce_float(my_flat.get("remaining_lease"))
+
+    if floor_area is not None and floor_area > 100 and dist_school is not None and dist_school < 1.0:
+        matches.append({
+            "profile": "Young families prioritising school proximity and space",
+            "features": ["floor_area_sqm", "dist_school", "dist_primary_school"],
+        })
+    if flat_type == "3-room" and is_mature:
+        matches.append({
+            "profile": "Downsizers or singles in a mature estate with established amenities",
+            "features": ["flat_type_ordinal", "is_mature_estate"],
+        })
+    if storey_midpoint is not None and storey_midpoint > 15 and dist_mrt is not None and dist_mrt < 0.5:
+        matches.append({
+            "profile": "Professionals or couples prioritising accessibility and views",
+            "features": ["storey_midpoint", "dist_mrt"],
+        })
+    if remaining is not None and remaining < 60:
+        matches.append({
+            "profile": "Cash buyers may matter more because lease length can narrow CPF and loan eligibility",
+            "features": ["remaining_lease", "flat_age", "lease_start_year"],
+        })
+    return matches
+
+
+def _build_buyer_profile_focus(question, chart_data, my_flat, features):
+    if not _is_buyer_profile_question(question):
+        return None
+    priority_matches = _buyer_priority_matches(my_flat)
+    matched_terms = set()
+    for match in priority_matches:
+        matched_terms.update(match.get("features") or [])
+
+    aligned_features = []
+    if matched_terms:
+        for item in features or []:
+            key = str(item.get("key") or "")
+            text = _shap_feature_match_text(item).lower()
+            if key in matched_terms or any(term.replace("_", " ") in text for term in matched_terms):
+                compact = _compact_shap_feature_for_focus(item)
+                if compact:
+                    aligned_features.append(compact)
+    if not aligned_features:
+        aligned_features = [
+            _compact_shap_feature_for_focus(item)
+            for item in sorted(
+                features or [],
+                key=lambda f: abs(_coerce_float(f.get("dollar_impact"), 0) or 0),
+                reverse=True,
+            )[:2]
+        ]
+        aligned_features = [item for item in aligned_features if item]
+
+    return {
+        "kind": "buyer_profile",
+        "priority_matches": priority_matches,
+        "aligned_features": aligned_features[:3],
+        "instruction": (
+            "Gemini must separate buyer appeal from model impact. State the likely "
+            "buyer profile only if priority_matches supports it. Explain that a feature "
+            "can matter to buyers even when its SHAP dollar impact is small or negative. "
+            "Quote aligned_features with exact dollar impacts and do not recommend selling."
+        ),
+    }
+
+
 def _build_prediction_shap_focus(question, chart_data, my_flat):
     text = str(question or "").strip()
     if not text:
@@ -7417,10 +7832,28 @@ def _build_prediction_shap_focus(question, chart_data, my_flat):
                 "Gemini must write the final answer. Quote the total_dollar_impact as "
                 "the total lease decay impact, list every component label with its "
                 "dollar_impact, and do not add a caveat sentence about a separate "
-                "newer-flat simulation. For wording, do not say 'reducing by -$X'; "
-                "say either 'net impact is -$X' or 'reducing by $X'."
+                "newer-flat simulation. Never say the impact is compared to a brand-new "
+                "flat or a newer flat; describe it as the lease and age contribution "
+                "within this estimate. For wording, do not say 'reducing by -$X'; say "
+                "either 'net impact is -$X' or 'reducing by $X'."
             ),
         }
+
+    ranked_reason_focus = _build_ranked_prediction_reason_focus(text, chart_data, my_flat, features)
+    if ranked_reason_focus:
+        return ranked_reason_focus
+
+    reliability_focus = _build_estimate_reliability_focus(text, chart_data, my_flat, features)
+    if reliability_focus:
+        return reliability_focus
+
+    buyer_profile_focus = _build_buyer_profile_focus(text, chart_data, my_flat, features)
+    if buyer_profile_focus:
+        return buyer_profile_focus
+
+    biggest_focus = _build_biggest_prediction_factor_focus(text, features)
+    if biggest_focus:
+        return biggest_focus
 
     category_focus = _build_category_shap_focus(text, features)
     if category_focus:
@@ -7691,6 +8124,10 @@ Return ONLY valid JSON:
 _AI_HOMEOWNER_TEXT_REPLACEMENTS = (
     (re.compile(r"\bgenerous floor area\b", re.IGNORECASE), "larger floor area"),
     (re.compile(r"\bgenerous size\b", re.IGNORECASE), "larger size"),
+    (re.compile(r"\bindicating strong current demand\b", re.IGNORECASE), "reflecting higher recent comparable prices"),
+    (re.compile(r"\bindicating strong demand\b", re.IGNORECASE), "reflecting higher recent comparable prices"),
+    (re.compile(r"\bstrong current demand\b", re.IGNORECASE), "higher recent comparable prices"),
+    (re.compile(r"\bstrong demand\b", re.IGNORECASE), "buyer activity"),
     (re.compile(r"\bstrong recent sales prices\b", re.IGNORECASE), "higher recent comparable sale prices"),
     (re.compile(r"\bstrong recent sales\b", re.IGNORECASE), "higher recent comparable sales"),
     (re.compile(r"\brecent market price performance\b", re.IGNORECASE), "recent comparable sales"),
@@ -7774,7 +8211,7 @@ If the user asks to compare areas inside a town (for example "Tampines East vs T
 - For "why is my flat priced this way?" questions, use this structure: estimated price, top 1-2 drivers with exact numbers, plain homeowner meaning, and where to inspect it in PropSight.
 - Only mention causes supported by the supplied data. NEVER use these vague filler phrases, regardless of context: "strong demand", "positive attributes", "favourable factors", "various factors", "market dynamics", "desirable location", "good location", "increasing values", "values have been increasing", "likely higher than before". If you would otherwise reach for these, name the specific feature from chart_data, my_flat, or shap_features that drives your point (for example, "remaining lease of 62 years", "9th floor", "476m to nearest MRT", "town_avg_price of $1.42M"). If no specific data supports the point, do not make the point.
 - Your first sentence MUST contain at least one specific number, dollar figure, percentage, or named feature from the supplied context (e.g. "$1.54M", "4.4%", "62 years", "Clementi Ave 3"). If you cannot ground the first sentence in a specific supplied value, use the warmer fallback rule below.
-- If chart_data includes `shap_answer_focus`, Gemini must write the final answer using that object as the primary source. For `kind: "lease_decay"`, quote total_dollar_impact as the total lease decay impact and list every component label with its dollar_impact. For `kind: "single_shap_feature"`, quote only the matched feature label and dollar_impact. For grouped focus kinds such as `negative_shap_features` or `schools_shap_features`, quote total_dollar_impact as the sum of the provided components and list every component label with its dollar_impact. Use signs cleanly: say "net impact is -$X" or "reducing by $X", never "reducing by -$X"; show positive net impacts with a plus sign, such as "+$716". Do not add SHAP dollar amounts outside shap_answer_focus.
+- If chart_data includes `shap_answer_focus`, Gemini must write the final answer using that object as the primary source and follow its `instruction` field exactly. For `kind: "ranked_prediction_reasons"`, answer as a ranked numbered list and use only `components`; if `comparison` is present, include predicted price, comparison average, dollar gap, and percentage gap. For `kind: "estimate_reliability"`, use predicted_price, price range, comparison, and top positive/negative factors to explain uncertainty without overclaiming. For `kind: "buyer_profile"`, separate buyer appeal from model impact and explain that small or negative SHAP impact can still matter to humans. For `kind: "single_biggest_shap_feature"`, quote only the supplied feature. For `kind: "lease_decay"`, quote total_dollar_impact as the total lease decay impact and list every component label with its dollar_impact. For `kind: "single_shap_feature"`, quote only the matched feature label and dollar_impact. For grouped focus kinds such as `negative_shap_features` or `schools_shap_features`, quote total_dollar_impact as the sum of the provided components and list every component label with its dollar_impact. Use signs cleanly: say "net impact is -$X" or "reducing by $X", never "reducing by -$X"; show positive net impacts with a plus sign, such as "+$716". Do not add SHAP dollar amounts outside shap_answer_focus.
 - If the user asks about the biggest factor, main driver, strongest impact, or what affects the price most, use chart_data.shap_features[0]. State its label and exact dollar_impact. Do not answer with market_shock unless the top SHAP feature itself is a market-shock feature. If shap_features is missing, use the warmer fallback rule below.
 - If the user asks about any specific SHAP feature or factor impact, quote only that feature's exact dollar_impact from chart_data.shap_features. If grouping multiple SHAP features, list each contributing label and dollar_impact and make the total equal the shown components. Never invent a SHAP dollar amount that is not directly present in chart_data.
 - If the user asks about lease decay, lease impact, or how much lease is reducing their flat's value, use only chart_data.lease_decay_breakdown: quote chart_data.lease_decay_breakdown.total_dollar_impact, list each feature in chart_data.lease_decay_breakdown.components with its label and dollar_impact, and never invent a lease impact number not derivable from lease_decay_breakdown. If lease_decay_breakdown is missing or has zero components, use the warmer fallback rule below instead of fabricating.
@@ -7969,7 +8406,9 @@ def api_ai_answer():
     context_data = _serialize_ai_chart_data(chart_data, context_limit)
     my_flat_context = _format_my_flat_context(my_flat)
     format_rule = (
-        "- Do NOT use markdown, bold, lists, or headings. Plain text only."
+        "- Do NOT use markdown, bold, or headings. Plain text only. "
+        "Short numbered lines are allowed only when shap_answer_focus.kind "
+        "is ranked_prediction_reasons."
         if surface == "prediction"
         else (
             "- You may use lightweight markdown — short lists, **bold** for the one "
@@ -8059,7 +8498,7 @@ Rules:
 - When using technical metrics such as price per sqm, benchmark, SHAP, market shock, or model-year adjustment, immediately translate the metric into plain homeowner meaning. Do not leave the metric unexplained.
 - For "why is my flat priced this way?" questions, use this structure: estimated price, top 1-2 drivers with exact numbers, plain homeowner meaning, and where to inspect it in PropSight.
 - Your first sentence MUST contain at least one specific number, dollar figure, percentage, or named feature from the supplied context (for example, "$1.54M", "4.4%", "62 years", "Clementi Ave 3", "Improved model"). If you cannot ground the first sentence in a specific supplied value, use the warmer fallback rule below.
-- If chart_data includes `shap_answer_focus`, Gemini must write the final answer using that object as the primary source. For `kind: "lease_decay"`, quote total_dollar_impact as the total lease decay impact and list every component label with its dollar_impact. For `kind: "single_shap_feature"`, quote only the matched feature label and dollar_impact. For grouped focus kinds such as `negative_shap_features` or `schools_shap_features`, quote total_dollar_impact as the sum of the provided components and list every component label with its dollar_impact. Use signs cleanly: say "net impact is -$X" or "reducing by $X", never "reducing by -$X"; show positive net impacts with a plus sign, such as "+$716". Do not add SHAP dollar amounts outside shap_answer_focus.
+- If chart_data includes `shap_answer_focus`, Gemini must write the final answer using that object as the primary source and follow its `instruction` field exactly. For `kind: "ranked_prediction_reasons"`, answer as a ranked numbered list and use only `components`; if `comparison` is present, include predicted price, comparison average, dollar gap, and percentage gap. For `kind: "estimate_reliability"`, use predicted_price, price range, comparison, and top positive/negative factors to explain uncertainty without overclaiming. For `kind: "buyer_profile"`, separate buyer appeal from model impact and explain that small or negative SHAP impact can still matter to humans. For `kind: "single_biggest_shap_feature"`, quote only the supplied feature. For `kind: "lease_decay"`, quote total_dollar_impact as the total lease decay impact and list every component label with its dollar_impact. For `kind: "single_shap_feature"`, quote only the matched feature label and dollar_impact. For grouped focus kinds such as `negative_shap_features` or `schools_shap_features`, quote total_dollar_impact as the sum of the provided components and list every component label with its dollar_impact. Use signs cleanly: say "net impact is -$X" or "reducing by $X", never "reducing by -$X"; show positive net impacts with a plus sign, such as "+$716". Do not add SHAP dollar amounts outside shap_answer_focus.
 - If the user asks about the biggest factor, main driver, strongest impact, or what affects the price most, use chart_data.shap_features[0]. State its label and exact dollar_impact. Do not answer with market_shock unless the top SHAP feature itself is a market-shock feature. If shap_features is missing or empty, use the warmer fallback rule below and point them to the SHAP breakdown if available.
 - If the user asks about any specific SHAP feature or factor impact, quote only that feature's exact dollar_impact from chart_data.shap_features. If grouping multiple SHAP features, list each contributing label and dollar_impact and make the total equal the shown components. Never invent a SHAP dollar amount that is not directly present in chart_data.
 - If the user asks about lease decay, lease impact, or how much lease is reducing their flat's value, use only chart_data.lease_decay_breakdown: quote chart_data.lease_decay_breakdown.total_dollar_impact, list each feature in chart_data.lease_decay_breakdown.components with its label and dollar_impact, and never invent a lease impact number not derivable from lease_decay_breakdown. If lease_decay_breakdown is missing or has zero components, use the warmer fallback rule below instead of fabricating.
@@ -8199,6 +8638,45 @@ def _get_ai_chat_memory(user_id, surface, scope_key):
     if not rows:
         return []
     return _sanitize_ai_chat_memory_history(rows[0].get("history") or [])
+
+
+def _ai_chat_session_title(history):
+    for item in history or []:
+        if not isinstance(item, dict) or item.get("role") != "user":
+            continue
+        text = re.sub(r"\s+", " ", str(item.get("text") or "")).strip()
+        if text:
+            return text[:70] + ("..." if len(text) > 70 else "")
+    return "New chat"
+
+
+def _list_ai_chat_memory_sessions(user_id, surface, base_scope_key):
+    rows = _supabase_request(
+        SUPABASE_AI_CHAT_SESSIONS_TABLE,
+        filters={
+            "select": "scope_key,history,created_at,updated_at",
+            "user_id": f"eq.{user_id}",
+            "surface": f"eq.{surface}",
+            "order": "updated_at.desc",
+            "limit": "50",
+        },
+    ) or []
+    prefix = f"{base_scope_key}{AI_CHAT_CONVERSATION_SCOPE_SEPARATOR}"
+    sessions = []
+    for row in rows:
+        scope_key = str(row.get("scope_key") or "")
+        if scope_key != base_scope_key and not scope_key.startswith(prefix):
+            continue
+        history = _sanitize_ai_chat_memory_history(row.get("history") or [])
+        sessions.append({
+            "scope_key": scope_key,
+            "title": _ai_chat_session_title(history),
+            "message_count": len(history),
+            "created_at": row.get("created_at"),
+            "updated_at": row.get("updated_at"),
+            "is_legacy": scope_key == base_scope_key,
+        })
+    return sessions
 
 
 def _save_ai_chat_memory(user_id, surface, scope_key, history):
@@ -8409,6 +8887,12 @@ def api_ai_chat_memory():
         return jsonify({"error": "Invalid chat memory scope"}), 400
 
     try:
+        if request.method == "GET" and str(request.args.get("list") or "").strip() == "1":
+            return jsonify({
+                "ok": True,
+                "sessions": _list_ai_chat_memory_sessions(user_id, surface, scope_key),
+            })
+
         if request.method == "GET":
             return jsonify({
                 "ok": True,

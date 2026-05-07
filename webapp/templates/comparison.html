@@ -1930,9 +1930,25 @@ var comparisonAiInput = document.getElementById('comparisonAiInput');
 var comparisonAiSend = document.getElementById('comparisonAiSend');
 var comparisonAiSuggestions = document.getElementById('comparisonAiSuggestions');
 var comparisonAiLimitNote = document.getElementById('comparisonAiLimitNote');
-var comparisonAiStorageKey = 'propsight:comparison:aiChat:v1:' + {{ g.user.get('id')|tojson }};
 var comparisonAiMemorySurface = 'comparison';
-var comparisonAiMemoryScopeKey = 'default';
+var comparisonAiMemoryBaseScopeKey = 'default';
+var comparisonAiStorageUserId = {{ g.user.get('id')|tojson }};
+var comparisonAiActiveScopeStorageKey = 'propsight:comparison:aiChat:active:v1:' + comparisonAiStorageUserId + ':' + comparisonAiMemoryBaseScopeKey;
+var storedComparisonAiActiveScope = '';
+try { storedComparisonAiActiveScope = localStorage.getItem(comparisonAiActiveScopeStorageKey) || ''; } catch (e) {}
+var comparisonAiMemoryScopeKey = storedComparisonAiActiveScope || comparisonAiMemoryBaseScopeKey;
+function buildComparisonAiStorageKey(scopeKey) {
+    return 'propsight:comparison:aiChat:v1:' + comparisonAiStorageUserId + ':' + (scopeKey || comparisonAiMemoryScopeKey);
+}
+var comparisonAiStorageKey = buildComparisonAiStorageKey();
+function makeComparisonAiConversationScopeKey() {
+    return (comparisonAiMemoryBaseScopeKey + '::chat::' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)).slice(0, 220);
+}
+function setComparisonAiActiveScope(scopeKey) {
+    comparisonAiMemoryScopeKey = scopeKey || comparisonAiMemoryBaseScopeKey;
+    comparisonAiStorageKey = buildComparisonAiStorageKey(comparisonAiMemoryScopeKey);
+    try { localStorage.setItem(comparisonAiActiveScopeStorageKey, comparisonAiMemoryScopeKey); } catch (e) {}
+}
 var AI_GENERATED_DISCLAIMER_TEXT = 'AI-generated explanation based on the comparison data. May contain errors.';
 var comparisonAiPreferenceShown = false;
 var comparisonAiPillsAlreadySeen = {{ 'true' if (g.user and g.user.get('chatbot_pills_seen_comparison')) else 'false' }};
@@ -2122,11 +2138,11 @@ function loadStoredComparisonAiHistory() {
     }
 }
 
-async function loadAccountComparisonAiHistory() {
+async function loadAccountComparisonAiHistory(scopeKey) {
     try {
         var params = new URLSearchParams({
             surface: comparisonAiMemorySurface,
-            scope_key: comparisonAiMemoryScopeKey
+            scope_key: scopeKey || comparisonAiMemoryScopeKey
         });
         var resp = await fetch('/api/ai_chat/memory?' + params.toString(), {
             credentials: 'same-origin'
@@ -2134,6 +2150,24 @@ async function loadAccountComparisonAiHistory() {
         if (!resp.ok) return [];
         var data = await resp.json().catch(function() { return {}; });
         return normalizeComparisonAiHistory(data.history);
+    } catch (e) {
+        return [];
+    }
+}
+
+async function loadAccountComparisonAiSessions() {
+    try {
+        var params = new URLSearchParams({
+            surface: comparisonAiMemorySurface,
+            scope_key: comparisonAiMemoryBaseScopeKey,
+            list: '1'
+        });
+        var resp = await fetch('/api/ai_chat/memory?' + params.toString(), {
+            credentials: 'same-origin'
+        });
+        if (!resp.ok) return [];
+        var data = await resp.json().catch(function() { return {}; });
+        return Array.isArray(data.sessions) ? data.sessions : [];
     } catch (e) {
         return [];
     }
@@ -2148,18 +2182,6 @@ function saveAccountComparisonAiHistory() {
             surface: comparisonAiMemorySurface,
             scope_key: comparisonAiMemoryScopeKey,
             history: comparisonAiHistory
-        })
-    }).catch(function() {});
-}
-
-function resetAccountComparisonAiHistory() {
-    fetch('/api/ai_chat/memory', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({
-            surface: comparisonAiMemorySurface,
-            scope_key: comparisonAiMemoryScopeKey
         })
     }).catch(function() {});
 }
@@ -2187,6 +2209,13 @@ function renderRestoredComparisonAiHistory() {
 
 async function restoreComparisonAiHistory() {
     var accountHistory = await loadAccountComparisonAiHistory();
+    if (!accountHistory.length && !storedComparisonAiActiveScope) {
+        var sessions = await loadAccountComparisonAiSessions();
+        if (sessions.length) {
+            setComparisonAiActiveScope(sessions[0].scope_key);
+            accountHistory = await loadAccountComparisonAiHistory();
+        }
+    }
     comparisonAiHistory = accountHistory.length ? accountHistory : loadStoredComparisonAiHistory();
     if (!comparisonAiHistory.length) return;
     try { localStorage.setItem(comparisonAiStorageKey, JSON.stringify(comparisonAiHistory)); } catch (e) {}
@@ -2377,10 +2406,10 @@ async function postComparisonChatbotPreference(format) {
     return data;
 }
 
-function resetComparisonAiHistory() {
+async function resetComparisonAiHistory() {
+    setComparisonAiActiveScope(makeComparisonAiConversationScopeKey());
     comparisonAiHistory = [];
     try { localStorage.removeItem(comparisonAiStorageKey); } catch (e) {}
-    resetAccountComparisonAiHistory();
     if (comparisonAiThread) comparisonAiThread.innerHTML = '';
     if (comparisonAiSuggestions) {
         comparisonAiSuggestions.style.display = '';
@@ -2410,7 +2439,33 @@ function buildComparisonMemoryHtml() {
     }).join('') + '</div>';
 }
 
-function appendComparisonMemoryView() {
+function buildComparisonSessionListHtml(sessions) {
+    if (!sessions.length) {
+        return '<div class="chatbot-memory-empty">No past chats yet.</div>';
+    }
+    return '<div class="chatbot-memory-list">' + sessions.map(function(session) {
+        var active = session.scope_key === comparisonAiMemoryScopeKey ? 'Current chat' : 'Open chat';
+        var title = escapeComparisonText(session.title || 'Chat');
+        var count = Number(session.message_count || 0);
+        return '<div class="chatbot-memory-turn">'
+            + '<div class="chatbot-memory-role">' + title + '</div>'
+            + '<div class="chatbot-memory-text">' + count + ' saved message' + (count === 1 ? '' : 's') + '</div>'
+            + '<button type="button" class="chatbot-config-secondary" data-comparison-open-scope="' + escapeComparisonText(session.scope_key) + '">' + active + '</button>'
+            + '</div>';
+    }).join('') + '</div>';
+}
+
+async function openComparisonAiSession(scopeKey) {
+    setComparisonAiActiveScope(scopeKey);
+    comparisonAiHistory = await loadAccountComparisonAiHistory(scopeKey);
+    if (!comparisonAiHistory.length) comparisonAiHistory = loadStoredComparisonAiHistory();
+    try { localStorage.setItem(comparisonAiStorageKey, JSON.stringify(comparisonAiHistory)); } catch (e) {}
+    if (comparisonAiThread) comparisonAiThread.innerHTML = '';
+    renderRestoredComparisonAiHistory();
+    if (!comparisonAiHistory.length && comparisonAiSuggestions && HAS_RESULTS) renderComparisonStarters();
+}
+
+async function appendComparisonMemoryView() {
     var existing = document.getElementById('comparisonMemoryView');
     if (existing) existing.remove();
     var wrap = document.createElement('div');
@@ -2421,15 +2476,28 @@ function appendComparisonMemoryView() {
         +   '<span class="chatbot-config-icon"><i class="bi bi-clock-history"></i></span>'
         +   '<div>'
         +     '<div class="chatbot-config-title">Chat Memory</div>'
-        +     '<div class="chatbot-config-sub">What this chatbot will send as previous context</div>'
+        +     '<div class="chatbot-config-sub">Open a past chat or inspect the current context</div>'
         +   '</div>'
         + '</div>'
+        + '<div class="chatbot-config-label">Past Chats</div>'
+        + '<div id="comparisonSessionList"><div class="chatbot-memory-empty">Loading past chats...</div></div>'
+        + '<div class="chatbot-config-label" style="margin-top:12px;">Current Context</div>'
         + buildComparisonMemoryHtml()
         + '<div class="chatbot-config-actions" style="margin-top:12px;">'
         +   '<button type="button" class="chatbot-config-cancel" id="comparisonMemoryClose">Close</button>'
         + '</div>';
     comparisonAiThread.appendChild(wrap);
     wrap.querySelector('#comparisonMemoryClose').addEventListener('click', function() { wrap.remove(); });
+    wrap.addEventListener('click', async function(e) {
+        var btn = e.target.closest('[data-comparison-open-scope]');
+        if (!btn) return;
+        btn.disabled = true;
+        btn.textContent = 'Opening...';
+        await openComparisonAiSession(btn.getAttribute('data-comparison-open-scope'));
+    });
+    var listEl = wrap.querySelector('#comparisonSessionList');
+    var sessions = await loadAccountComparisonAiSessions();
+    if (listEl) listEl.innerHTML = buildComparisonSessionListHtml(sessions);
     comparisonAiThread.scrollTop = comparisonAiThread.scrollHeight;
 }
 
@@ -2458,12 +2526,12 @@ function maybeShowComparisonAiPreferences() {
         +   '</div>'
         + '</div>'
         + '<div class="chatbot-config-section chatbot-config-reset-section">'
-        +   '<div class="chatbot-config-label">Chat History</div>'
+        +   '<div class="chatbot-config-label">Conversation</div>'
         +   '<div class="chatbot-config-history-actions">'
-        +     '<button type="button" class="chatbot-config-secondary" id="caConfigViewMemory">View Chat Memory</button>'
-        +     '<button type="button" class="chatbot-config-reset" id="caConfigReset">Reset Chat History</button>'
+        +     '<button type="button" class="chatbot-config-secondary" id="caConfigViewMemory">View Past Chats</button>'
+        +     '<button type="button" class="chatbot-config-reset" id="caConfigReset">New Chat</button>'
         +   '</div>'
-        +   '<div class="chatbot-config-hint">Clears this conversation on this device and restores starter prompts.</div>'
+        +   '<div class="chatbot-config-hint">Starts fresh while keeping past chats available in Chat Memory.</div>'
         + '</div>'
         + '<div class="chatbot-config-actions">'
         +   '<button type="button" class="chatbot-config-apply" id="caConfigApply">Apply</button>'
@@ -2496,9 +2564,19 @@ function maybeShowComparisonAiPreferences() {
     wrap.querySelector('#caConfigCancel').addEventListener('click', function() {
         wrap.remove();
     });
-    wrap.querySelector('#caConfigReset').addEventListener('click', function() {
-        if (!confirm('Reset this chat history?')) return;
-        resetComparisonAiHistory();
+    wrap.querySelector('#caConfigReset').addEventListener('click', async function() {
+        if (!confirm('Start a new chat? Your current conversation stays in Chat Memory.')) return;
+        var resetBtn = this;
+        resetBtn.disabled = true;
+        resetBtn.textContent = 'Starting...';
+        showComparisonConfigError(wrap, '');
+        try {
+            await resetComparisonAiHistory();
+        } catch (e) {
+            resetBtn.disabled = false;
+            resetBtn.textContent = 'New Chat';
+            showComparisonConfigError(wrap, 'Could not start a new chat. Please try again.');
+        }
     });
     wrap.querySelector('#caConfigViewMemory').addEventListener('click', function() {
         appendComparisonMemoryView();
