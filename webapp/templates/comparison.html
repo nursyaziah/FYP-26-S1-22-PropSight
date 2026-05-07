@@ -1356,7 +1356,10 @@ body.propsight-app {
                             <i class="bi bi-exclamation-triangle-fill"></i>
                             Historical price trend is unavailable for this selection due to limited transaction data.
                         </p>
-                        <p class="text-muted small mb-2 mt-3">5-Year Forecast</p>
+                        <p class="text-muted small mb-2 mt-3">
+                            5-Year Forecast
+                            <span id="forecastLeaseWarning{{ panel.index }}" class="badge bg-warning text-dark ms-1 d-none" title="CPF usage restrictions may apply">CPF limit</span>
+                        </p>
                         <div style="position:relative; height:200px;">
                             <canvas id="forecastChart{{ panel.index }}"></canvas>
                         </div>
@@ -1816,8 +1819,10 @@ if (IS_PREMIUM && HAS_RESULTS && PAYLOADS.length >= 2) {
         if (!payload.town) return;
         var trendWarning = document.getElementById('trendDataWarning' + idx);
         var forecastWarning = document.getElementById('forecastDataWarning' + idx);
+        var leaseWarning = document.getElementById('forecastLeaseWarning' + idx);
         if (trendWarning) trendWarning.classList.add('d-none');
         if (forecastWarning) forecastWarning.classList.add('d-none');
+        if (leaseWarning) leaseWarning.classList.add('d-none');
 
         // Price Trend
         var trendParams = new URLSearchParams({
@@ -1878,6 +1883,11 @@ if (IS_PREMIUM && HAS_RESULTS && PAYLOADS.length >= 2) {
                     if (forecastWarning) forecastWarning.classList.remove('d-none');
                     return;
                 }
+                var crossesCpfLimit = timeline.some(function(item) {
+                    var lease = Number(item.remaining_lease);
+                    return !isNaN(lease) && lease < 60;
+                });
+                if (leaseWarning) leaseWarning.classList.toggle('d-none', !crossesCpfLimit);
                 var ctx = document.getElementById('forecastChart' + idx);
                 if (!ctx) return;
                 new Chart(ctx.getContext('2d'), {

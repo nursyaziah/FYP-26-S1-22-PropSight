@@ -6908,6 +6908,13 @@ def api_future_prediction():
             fp = _enrich_prediction_result(0, prediction_year=future_year)
         fp["year"] = future_year
         fp["remaining_lease"] = max(0, 99 - (future_year - lease_commence))
+        base_mape = fp.get("mape")
+        if base_mape is not None:
+            widened_mape = base_mape * (1 + 0.15 * y_offset)
+            margin = max(0.0, widened_mape) / 100.0
+            rounded_price = fp.get("predicted_price", 0)
+            fp["price_low"] = int(round(max(0.0, rounded_price * (1 - margin))))
+            fp["price_high"] = int(round(max(0.0, rounded_price * (1 + margin))))
         timeline.append(fp)
 
     return jsonify({

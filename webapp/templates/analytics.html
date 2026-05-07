@@ -4198,11 +4198,14 @@ async function loadFuturePredictions() {
         document.getElementById('forecastTableBody').innerHTML = timeline.map((item, i) => {
             const rowClass  = i === 0 ? ' class="is-current"' : '';
             const yearLabel = i === 0 ? item.year + ' (Now)' : item.year;
+            const leaseWarning = (item.remaining_lease && item.remaining_lease < 60)
+                ? ' <span class="badge bg-warning text-dark ms-1" title="CPF usage restrictions may apply">CPF limit</span>'
+                : '';
             return '<tr' + rowClass + '>' +
                 '<td>' + escapeHtml(yearLabel) + '</td>' +
                 '<td class="text-end">' + formatMoney(item.predicted_price) + '</td>' +
                 '<td class="text-end">' + formatMoney(item.price_low) + ' – ' + formatMoney(item.price_high) + '</td>' +
-                '<td class="text-end">' + escapeHtml(String(item.remaining_lease || '—')) + ' yrs</td>' +
+                '<td class="text-end">' + escapeHtml(String(item.remaining_lease || '—')) + ' yrs' + leaseWarning + '</td>' +
                 '</tr>';
         }).join('');
         const first = timeline[0];
