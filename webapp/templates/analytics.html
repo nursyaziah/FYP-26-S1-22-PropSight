@@ -2405,6 +2405,7 @@ function buildAnalyticsAreaRedirect() {
 function buildMyFlatContext() {
     const seed = predictionSeed || {};
     if (!seed.town && !seed.flat_type && !seed.predicted_price) return null;
+    const remainingLease = getPredictionRemainingLease();
     return {
         town: seed.town,
         flat_type: seed.flat_type,
@@ -2412,6 +2413,7 @@ function buildMyFlatContext() {
         floor_area: seed.floor_area,
         storey_range: seed.storey_range,
         lease_commence: seed.lease_commence,
+        remaining_lease: remainingLease,
         predicted_price: seed.predicted_price,
         street_name: seed.street_name,
         block: seed.block,
@@ -2632,10 +2634,16 @@ function markdownLinkFirst(text, pattern, href) {
     });
 }
 
+function extractWantToGoDeeperText(text) {
+    const match = String(text || '').match(/\*\*Want to go deeper\?\*\*\s*([\s\S]+)$/i);
+    return match ? match[1].trim() : '';
+}
+
 function withAnalyticsResourceLinks(question, answer) {
     let text = String(answer || '').trim();
     if (!text) return text;
     const combined = (String(question || '') + ' ' + text).toLowerCase();
+    const followUpText = extractWantToGoDeeperText(text);
     const resources = [
         {
             href: buildAnalyticsSectionLink('trend'),
@@ -2659,7 +2667,7 @@ function withAnalyticsResourceLinks(question, answer) {
             href: buildAnalyticsSectionLink('flattype'),
             label: 'Open Flat Type Distribution',
             pattern: /\b(Flat Type Distribution|flat type mix|flat type breakdown|flat types)\b/i,
-            triggers: ['flat type', '5-room', '5 room', 'perform compared', 'different flat']
+            triggers: ['flat type distribution', 'flat type mix', 'flat type breakdown', 'flat types', 'room mix', 'type mix', 'compare flat types', 'which flat type']
         },
         {
             href: buildAnalyticsSectionLink('volume'),
@@ -2676,8 +2684,8 @@ function withAnalyticsResourceLinks(question, answer) {
         {
             href: buildAnalyticsSectionLink('forecast'),
             label: 'Open 5-Year Forecast',
-            pattern: /\b(5-Year Price Forecast|5-year forecast|Forecast chart|Projection Table)\b/i,
-            triggers: ['future resale', 'future value', 'forecast', 'next year', 'over time']
+            pattern: /\b(5-Year Price Forecast|5-year forecast(?: chart)?|Forecast chart|Projection Table|model projection)\b/i,
+            triggers: ['future resale', 'future value', 'forecast', 'projection', 'projected value', 'next year', 'over time']
         },
         {
             href: buildAnalyticsSectionLink('myflat'),
@@ -2698,7 +2706,10 @@ function withAnalyticsResourceLinks(question, answer) {
         const before = text;
         text = markdownLinkFirst(text, resource.pattern, resource.href);
         const alreadyLinked = before !== text || text.indexOf(resource.href) !== -1;
-        if (!alreadyLinked && containsAny(combined, resource.triggers)) {
+        const followUpMatches = followUpText
+            && (resource.pattern.test(followUpText) || containsAny(followUpText, resource.triggers));
+        const bodyMatches = !followUpText && !alreadyLinked && containsAny(combined, resource.triggers);
+        if (followUpMatches || bodyMatches) {
             appended.push('[' + resource.label + '](' + resource.href + ')');
         }
     });
@@ -4199,7 +4210,7 @@ async function loadFuturePredictions() {
             const rowClass  = i === 0 ? ' class="is-current"' : '';
             const yearLabel = i === 0 ? item.year + ' (Now)' : item.year;
             const leaseWarning = (item.remaining_lease && item.remaining_lease < 60)
-                ? ' <span class="badge bg-warning text-dark ms-1" title="CPF usage restrictions may apply">CPF limit</span>'
+                ? ' <span class="badge bg-warning text-dark ms-1" title="CPF and loan limits depend on buyer age and lease coverage to age 95">Lease watch</span>'
                 : '';
             return '<tr' + rowClass + '>' +
                 '<td>' + escapeHtml(yearLabel) + '</td>' +
@@ -4716,8 +4727,10 @@ function collectChartDataSummary() {
         flat_type: latestFlatTypeData.map(d => ({ flat_type: d.flat_type, txn_count: d.txn_count, avg_price: priceMetricValue(d), median_price: priceMetricValue(d) })),
         benchmark: benchmarkRows.slice(0,10).map(d => ({ label: d.town || d.street_name, avg_price: priceMetricValue(d), median_price: priceMetricValue(d) })),
         psf:       psfRows.slice(0,10).map(d => ({ label: d.town || d.street_name, psf: metricValue(d, 'psf') })),
-        forecast:  latestForecastData.map(d => ({ year: d.year, predicted_price: d.predicted_price, price_low: d.price_low, price_high: d.price_high })),
+        forecast:  latestForecastData.map(d => ({ year: d.year, predicted_price: d.predicted_price, price_low: d.price_low, price_high: d.price_high, remaining_lease: d.remaining_lease, mape: d.mape })),
         lease:     latestLeaseDecayData.map(d => ({ label: d.lease_bucket || d.bucket || d.label, avg_price: priceMetricValue(d), median_price: priceMetricValue(d), txn_count: d.txn_count })),
+        lease_commence: predictionSeed.lease_commence,
+        remaining_lease: getPredictionRemainingLease(),
     };
 }
 
