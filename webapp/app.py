@@ -72,7 +72,7 @@ if "__main__" in _sys.modules and not hasattr(_sys.modules["__main__"], "Ensembl
 
 
 # ---------------------------------------------------------------------------
-def _ttl_cache(maxsize=128, ttl=3600):
+def _ttl_cache(maxsize=128, ttl=3600, cache_empty=True):
     """lru_cache replacement that expires entries after *ttl* seconds."""
     def decorator(fn):
         _cache = {}
@@ -89,6 +89,8 @@ def _ttl_cache(maxsize=128, ttl=3600):
                 _cache.pop(oldest_key, None)
                 _timestamps.pop(oldest_key, None)
             result = fn(*args)
+            if not cache_empty and result in (None, [], {}, ()):
+                return result
             _cache[args] = result
             _timestamps[args] = now
             return result
@@ -372,6 +374,7 @@ def _env_float(name, default):
 
 PREMIUM_DAILY_COMPARISON_AI_LIMIT = _env_int("PREMIUM_DAILY_COMPARISON_AI_LIMIT", 10)
 MODEL_STALE_AFTER_DAYS = _env_int("MODEL_STALE_AFTER_DAYS", 45)
+FORECAST_MAPE_WIDENING_RATE = 0.15
 SORA_TTL_SECONDS = max(300, _env_int("SORA_TTL_SECONDS", 6 * 60 * 60))
 SORA_FALLBACK_3M = _env_float("SORA_FALLBACK_3M", 2.5)
 MAS_API_KEY = (
@@ -2693,7 +2696,7 @@ def _get_district_summary_data():
         return []
 
 
-@_ttl_cache(maxsize=1, ttl=3600)
+@_ttl_cache(maxsize=1, ttl=3600, cache_empty=False)
 def _get_district_comparison_data():
     try:
         return _supabase_rpc("rpc_api_district_comparison") or []
@@ -3909,7 +3912,7 @@ FEATURE_DESCRIPTIONS = {
     "flat_model_enc": "The design type of your flat (Improved, DBSS, Premium, Maisonette, etc.). Newer or special designs often fetch a premium.",
     "storey_midpoint": "How high up your unit is. Higher floors usually sell for more thanks to better views and less noise.",
     "flat_age": "How old your flat is. Older flats generally sell for less than newer ones with the same size and location.",
-    "remaining_lease": "How many years are left on your 99-year lease. Shorter leases mean lower prices — and make it harder for buyers to get bank loans or use their CPF.",
+    "remaining_lease": "How many years are left on your 99-year lease. Shorter leases usually mean lower prices and can affect how much CPF or housing loan support buyers can use, depending on buyer age and lease coverage.",
     "lease_commence_date": "The year your flat's 99-year lease started.",
     "is_mature_estate": "Whether your town is a 'mature estate' (like Bedok, Tampines, Queenstown). These have more amenities and MRTs, so flats there cost more.",
     # Location / amenities
@@ -3975,7 +3978,7 @@ _SHAP_FALLBACK_MEANINGS = (
     (("dist_school",), "Proximity to schools materially shifts demand from young families with school-age children."),
     (("dist_cbd",), "Travel time to the CBD is a core buyer filter for working professionals."),
     (("remaining_lease", "lease_commence", "lease_start", "flat_age"),
-     "Lease length controls CPF usage and bank loan eligibility — short lease shrinks your buyer pool to cash buyers."),
+     "Lease length affects CPF usage and housing loan eligibility, so shorter lease can narrow the buyer pool depending on buyer age."),
     (("psf", "price_per_sqm", "recent_psf"), "Recent price-per-sqm in this area sets the comparable benchmark for negotiations."),
     (("market_shock",), "The local market is moving versus its 3-month benchmark — your price reflects a recent shift, not a permanent level."),
     (("town", "is_mature_estate"), "Town and estate maturity shape the kind of buyer this flat naturally attracts."),
@@ -6299,7 +6302,7 @@ def api_price_trend():
 @app.route("/api/price_trend_simple")
 @api_login_required
 def api_price_trend_simple():
-    """Yearly average price trend."""
+    """Yearly price trend with median price and PSF-compatible fields."""
     town = request.args.get("town", "")
     flat_type = request.args.get("flat_type", "")
     street_name = request.args.get("street_name", "")
@@ -6353,7 +6356,7 @@ def api_street_price_trend():
 @app.route("/api/district_comparison")
 @api_login_required
 def api_district_comparison():
-    """Return per-town avg prices for the most recent year."""
+    """Return per-town benchmark prices for the recent comparison window."""
     try:
         return jsonify(_get_district_comparison_data())
     except SupabaseError:
@@ -6906,6 +6909,13 @@ def api_future_prediction():
             fp = _enrich_prediction_result(0, prediction_year=future_year)
         fp["year"] = future_year
         fp["remaining_lease"] = max(0, 99 - (future_year - lease_commence))
+        base_mape = fp.get("mape")
+        if base_mape is not None:
+            widened_mape = base_mape * (1 + FORECAST_MAPE_WIDENING_RATE * y_offset)
+            margin = max(0.0, widened_mape) / 100.0
+            rounded_price = fp.get("predicted_price", 0)
+            fp["price_low"] = int(round(max(0.0, rounded_price * (1 - margin))))
+            fp["price_high"] = int(round(max(0.0, rounded_price * (1 + margin))))
         timeline.append(fp)
 
     return jsonify({
@@ -7025,7 +7035,11 @@ def _format_my_flat_context(my_flat):
         remaining = _coerce_float(my_flat.get("remaining_lease"))
         if remaining is None:
             remaining = max(0, 99 - (_current_year() - lc))
-        parts.append(f"lease from {lc} (about {remaining:.0f} years remaining)")
+        threshold_year = _lease_threshold_year_from_commence(lc)
+        parts.append(
+            f"lease from {lc} (about {remaining:.0f} years remaining; "
+            f"60-year lease watch deadline {threshold_year})"
+        )
         appended_remaining_lease = True
     except (TypeError, ValueError):
         pass
@@ -7082,6 +7096,259 @@ def _compact_shap_features_for_ai(shap_features):
     return compact
 
 
+def _compact_benchmark_rows_for_ai(rows):
+    compact = []
+    for row in _question_rows(rows)[:5]:
+        price = _coerce_float(row.get("median_price"))
+        if price is None:
+            price = _coerce_float(row.get("avg_price"))
+        compact.append({
+            "label": _row_label(row),
+            "median_or_avg_price": int(round(price)) if price is not None else None,
+        })
+    return [row for row in compact if row.get("label") not in (None, "item")]
+
+
+def _lease_threshold_year_from_commence(lease_commence):
+    lease_commence = _coerce_int(lease_commence)
+    if lease_commence is None:
+        return None
+    return lease_commence + 39
+
+
+def _lease_threshold_year_from_remaining(remaining, reference_year=None):
+    remaining = _coerce_float(remaining)
+    if remaining is None:
+        return None
+    year = _coerce_float(reference_year)
+    if year is None:
+        year = _current_year()
+    return int(round(year + remaining - 60))
+
+
+def _lease_window_context_from_remaining(remaining, label=None, lease_commence=None, reference_year=None):
+    remaining = _coerce_float(remaining)
+    if remaining is None:
+        return None
+    years_to_60 = remaining - 60
+    threshold_year = (
+        _lease_threshold_year_from_commence(lease_commence)
+        or _lease_threshold_year_from_remaining(remaining, reference_year)
+    )
+    context = {
+        "label": label,
+        "remaining_lease": round(remaining, 1),
+        "years_to_60_threshold": round(years_to_60, 1),
+        "cpf_threshold_year": threshold_year,
+        "optimal_selling_window_deadline": threshold_year,
+    }
+    if remaining < 60:
+        context["status"] = "below_60_threshold"
+        context["message"] = (
+            f"With {remaining:.0f} years left, this flat is already in the 60-year "
+            "lease watch zone. CPF and housing-loan limits are buyer-specific, but "
+            "liquidity may be tighter for younger buyers whose lease coverage falls short. "
+            f"The optimal selling-window deadline was {threshold_year}."
+        )
+    elif years_to_60 <= 5:
+        context["status"] = "approaching_60_threshold"
+        context["message"] = (
+            f"With {remaining:.0f} years left, this flat is about {years_to_60:.0f} "
+            "years from the 60-year lease watch zone. "
+            f"Treat {threshold_year} as the optimal selling-window deadline if planning a sale."
+        )
+    else:
+        context["status"] = "above_60_threshold"
+        context["message"] = (
+            f"With {remaining:.0f} years left, this flat is about {years_to_60:.0f} "
+            "years above the 60-year lease watch zone. "
+            f"The 60-year lease watch deadline is {threshold_year}."
+        )
+    return context
+
+
+def _market_momentum_context(chart_data):
+    trend_rows = _sort_rows_by_year(_question_rows(chart_data.get("trend")))
+    price_rows = []
+    for row in trend_rows:
+        price = _coerce_float(row.get("median_price"))
+        if price is None:
+            price = _coerce_float(row.get("avg_price"))
+        if price is not None:
+            price_rows.append((row, price))
+
+    volume_rows = [
+        (row, _coerce_float(row.get("txn_count")))
+        for row in _sort_rows_by_year(_question_rows(chart_data.get("volume")))
+        if _coerce_float(row.get("txn_count")) is not None
+    ]
+    if len(price_rows) < 2 or len(volume_rows) < 2:
+        return None
+
+    prev_price_row, prev_price = price_rows[-2]
+    latest_price_row, latest_price = price_rows[-1]
+    prev_volume_row, prev_volume = volume_rows[-2]
+    latest_volume_row, latest_volume = volume_rows[-1]
+
+    price_change_pct = ((latest_price - prev_price) / prev_price) * 100 if prev_price else 0
+    volume_change_pct = ((latest_volume - prev_volume) / prev_volume) * 100 if prev_volume else 0
+    price_direction = "rising" if price_change_pct > 1 else "falling" if price_change_pct < -1 else "stable"
+    volume_direction = "rising" if volume_change_pct > 1 else "dropping" if volume_change_pct < -1 else "stable"
+
+    if price_direction == "rising" and volume_direction == "stable":
+        narrative = (
+            "stable transaction volume alongside rising prices reinforces seller pricing "
+            "power because prices are clearing without needing a larger buyer pool."
+        )
+    elif price_direction == "rising" and volume_direction == "dropping":
+        narrative = "supply is tightening, giving sellers pricing power."
+    elif price_direction == "falling" and volume_direction == "dropping":
+        narrative = "the market is cooling and buyers are retreating."
+    elif price_direction == "rising" and volume_direction == "rising":
+        narrative = "prices and buyer activity are both strengthening."
+    elif price_direction == "falling" and volume_direction == "rising":
+        narrative = "more transactions are clearing at lower prices, so buyers may have more bargaining power."
+    else:
+        narrative = "momentum is mixed, so use both price and transaction volume before drawing conclusions."
+
+    return {
+        "price_from_year": prev_price_row.get("year"),
+        "price_to_year": latest_price_row.get("year"),
+        "price_change_pct": round(price_change_pct, 1),
+        "price_direction": price_direction,
+        "volume_from_year": prev_volume_row.get("year"),
+        "volume_to_year": latest_volume_row.get("year"),
+        "volume_change_pct": round(volume_change_pct, 1),
+        "volume_direction": volume_direction,
+        "narrative": narrative,
+    }
+
+
+def _build_ai_strategist_context(chart_data):
+    if not isinstance(chart_data, dict):
+        return {}
+
+    context = {}
+    micro_rows = _compact_benchmark_rows_for_ai(chart_data.get("benchmark"))
+    if micro_rows:
+        context["micro_local_benchmarks"] = {
+            "instruction": "Use these immediate area rows before broader town averages.",
+            "rows": micro_rows,
+        }
+
+    lease_window = _lease_window_context_from_remaining(
+        chart_data.get("remaining_lease"),
+        lease_commence=chart_data.get("lease_commence"),
+    )
+    if lease_window:
+        context["lease_action_window"] = lease_window
+    else:
+        panel_windows = []
+        for idx, panel in enumerate(_question_rows(chart_data.get("panels"))[:5]):
+            window = _lease_window_context_from_remaining(
+                panel.get("remaining_lease"),
+                panel.get("label") or chr(ord("A") + idx),
+                panel.get("lease_commence"),
+            )
+            if window:
+                panel_windows.append(window)
+        if panel_windows:
+            context["lease_action_windows"] = panel_windows
+
+    momentum = _market_momentum_context(chart_data)
+    if momentum:
+        context["market_momentum"] = momentum
+
+    return context
+
+
+def _forecast_year_offset(row, first_year, index):
+    year = _coerce_float(row.get("year"))
+    if year is not None and first_year is not None:
+        return max(0, int(round(year - first_year)))
+    return max(0, index)
+
+
+def _forecast_calculation_context(rows):
+    rows = [
+        row for row in _sort_rows_by_year(_question_rows(rows))
+        if _coerce_float(row.get("predicted_price")) is not None
+    ]
+    if len(rows) < 2:
+        return None
+
+    first = rows[0]
+    last = rows[-1]
+    first_year = _coerce_float(first.get("year"))
+    last_offset = _forecast_year_offset(last, first_year, len(rows) - 1)
+    base_mape = None
+    for row in rows:
+        base_mape = _coerce_float(row.get("mape"))
+        if base_mape is not None:
+            break
+
+    lease_start = _coerce_float(first.get("remaining_lease"))
+    lease_end = _coerce_float(last.get("remaining_lease"))
+    lease_60_threshold_year = _lease_threshold_year_from_remaining(lease_start, first_year)
+    price_start = _coerce_float(first.get("predicted_price"))
+    price_end = _coerce_float(last.get("predicted_price"))
+    price_change_pct = (
+        ((price_end - price_start) / price_start) * 100
+        if price_start and price_end is not None
+        else None
+    )
+
+    future_rows = []
+    for index, row in enumerate(rows[1:], start=1):
+        offset = _forecast_year_offset(row, first_year, index)
+        multiplier = 1 + FORECAST_MAPE_WIDENING_RATE * offset
+        effective_mape = base_mape * multiplier if base_mape is not None else None
+        future_rows.append({
+            "year": row.get("year"),
+            "year_offset": offset,
+            "predicted_price": _coerce_int(row.get("predicted_price")),
+            "remaining_lease": _coerce_float(row.get("remaining_lease")),
+            "price_low": _coerce_int(row.get("price_low")),
+            "price_high": _coerce_int(row.get("price_high")),
+            "widening_multiplier": round(multiplier, 2),
+            "effective_mape": round(effective_mape, 2) if effective_mape is not None else None,
+        })
+
+    context = {
+        "method": (
+            "Rerun the pricing model once for each future year, keeping flat attributes "
+            "constant while updating time-based features such as flat age, remaining lease, "
+            "and model-year effects."
+        ),
+        "central_estimate_field": "predicted_price",
+        "range_fields": ["price_low", "price_high"],
+        "confidence_band_rule": (
+            "Base MAPE is widened by FORECAST_MAPE_WIDENING_RATE for each year offset: "
+            "base_mape * (1 + rate * year_offset)."
+        ),
+        "annual_widening_rate": FORECAST_MAPE_WIDENING_RATE,
+        "annual_widening_rate_pct": round(FORECAST_MAPE_WIDENING_RATE * 100, 1),
+        "forecast_points": len(rows),
+        "future_years": max(0, len(rows) - 1),
+        "first_year": first.get("year"),
+        "last_year": last.get("year"),
+        "final_year_offset": last_offset,
+        "final_widening_multiplier": round(1 + FORECAST_MAPE_WIDENING_RATE * last_offset, 2),
+        "first_predicted_price": _coerce_int(first.get("predicted_price")),
+        "last_predicted_price": _coerce_int(last.get("predicted_price")),
+        "price_change_pct": round(price_change_pct, 1) if price_change_pct is not None else None,
+        "final_price_low": _coerce_int(last.get("price_low")),
+        "final_price_high": _coerce_int(last.get("price_high")),
+        "first_remaining_lease": round(lease_start, 1) if lease_start is not None else None,
+        "last_remaining_lease": round(lease_end, 1) if lease_end is not None else None,
+        "lease_60_threshold_year": lease_60_threshold_year,
+        "optimal_selling_window_deadline": lease_60_threshold_year,
+        "base_mape": round(base_mape, 2) if base_mape is not None else None,
+        "future_rows": future_rows[:5],
+    }
+    return context
+
+
 def _serialize_ai_chart_data(chart_data, limit):
     if not isinstance(chart_data, dict):
         return json.dumps(chart_data or {}, default=str)[:limit]
@@ -7091,11 +7358,20 @@ def _serialize_ai_chart_data(chart_data, limit):
     shap_features = _compact_shap_features_for_ai(chart_data.get("shap_features"))
     market_shock = chart_data.get("market_shock")
     seasonal_timing_context = chart_data.get("seasonal_timing_context")
+    forecast_lease_threshold = _forecast_lease_threshold(chart_data.get("forecast"))
+    forecast_calculation_context = _forecast_calculation_context(chart_data.get("forecast"))
+    strategist_context = _build_ai_strategist_context(chart_data)
     prioritized = {}
     if isinstance(shap_answer_focus, dict) and shap_answer_focus:
         prioritized["shap_answer_focus"] = shap_answer_focus
     if isinstance(seasonal_timing_context, dict) and seasonal_timing_context:
         prioritized["seasonal_timing_context"] = seasonal_timing_context
+    if isinstance(forecast_lease_threshold, dict) and forecast_lease_threshold:
+        prioritized["forecast_lease_threshold"] = forecast_lease_threshold
+    if isinstance(forecast_calculation_context, dict) and forecast_calculation_context:
+        prioritized["forecast_calculation_context"] = forecast_calculation_context
+    if isinstance(strategist_context, dict) and strategist_context:
+        prioritized["strategist_context"] = strategist_context
     if isinstance(lease_decay_breakdown, dict) and lease_decay_breakdown:
         prioritized["lease_decay_breakdown"] = lease_decay_breakdown
     if shap_features:
@@ -7903,6 +8179,39 @@ def _sort_rows_by_year(rows):
     return sorted(rows, key=_year)
 
 
+def _forecast_lease_threshold(rows):
+    rows = _sort_rows_by_year(_question_rows(rows))
+    first = rows[0] if rows else {}
+    threshold_year = _lease_threshold_year_from_remaining(
+        first.get("remaining_lease"),
+        first.get("year"),
+    )
+    for row in rows:
+        remaining = _coerce_float(row.get("remaining_lease"))
+        if remaining is None or remaining >= 60:
+            continue
+        year = row.get("year")
+        try:
+            year = int(float(year))
+        except (TypeError, ValueError):
+            year = str(year) if year not in (None, "") else "the forecast window"
+        return {
+            "year": year,
+            "remaining_lease": round(remaining, 1),
+            "message": (
+                f"In {year}, your flat's remaining lease will drop below 60 years. "
+                "This is a lease watch zone rather than an automatic cutoff: CPF and "
+                "housing-loan limits depend on each buyer's age and whether the lease "
+                "can cover them to age 95, so younger buyers may face tighter limits. "
+                f"Treat {threshold_year or year} as the optimal selling-window deadline "
+                "if planning a sale."
+            ),
+            "cpf_threshold_year": threshold_year or year,
+            "optimal_selling_window_deadline": threshold_year or year,
+        }
+    return None
+
+
 def _summarize_price_trend_for_questions(rows):
     rows = [
         row for row in _sort_rows_by_year(_question_rows(rows))
@@ -8005,9 +8314,23 @@ def _summarize_forecast_for_questions(rows):
             f"; final range {_format_ai_currency(last.get('price_low'))}-"
             f"{_format_ai_currency(last.get('price_high'))}"
         )
+    lease_threshold = _forecast_lease_threshold(rows)
+    lease_60_year = _lease_threshold_year_from_remaining(
+        first.get("remaining_lease"),
+        first.get("year"),
+    )
+    lease_text = ""
+    if lease_threshold:
+        lease_text = (
+            f"; remaining lease enters the 60-year watch zone in {lease_threshold.get('year')} "
+            f"({lease_threshold.get('remaining_lease')} years remaining)"
+        )
+    elif lease_60_year:
+        lease_text = f"; 60-year lease watch deadline {lease_60_year}"
     return (
         f"{len(rows)} forecast points; {_row_label(first)} {_format_ai_currency(first_price)} to "
-        f"{_row_label(last)} {_format_ai_currency(last_price)} ({_format_ai_pct(pct)}){range_text}."
+        f"{_row_label(last)} {_format_ai_currency(last_price)} ({_format_ai_pct(pct)})"
+        f"{range_text}{lease_text}."
     )
 
 
@@ -8161,13 +8484,20 @@ Rules:
 - Explain what the data MEANS for the homeowner in plain language. Avoid property jargon.
 - If the "THE USER'S OWN FLAT" block is populated, tie the answer specifically to that flat.
 - If no specific data supports a point, do not make the point.
+- **FORECAST LEASE THRESHOLD:** When discussing the 5-year forecast, check if remaining_lease will drop below 60 years within the forecast window. If it will, flag this as a lease watch zone, not an automatic cutoff. Explain that CPF and housing-loan limits depend on each buyer's age and whether the lease can cover them to age 95, so younger buyers may face tighter limits.
+- **MICRO-LOCAL FIRST:** When evaluating a property, always benchmark it against the immediate micro-location (the street or block) first, before comparing it to the broader town average. Homeowners care about how their block performs against the block next door.
+- **LEASE ACTION WINDOWS:** When discussing lease decay, do not just state the dollar impact. Always calculate and state the year when remaining_lease reaches 60 years using lease_commence or lease_commence_year + 39 when supplied. State this as the homeowner's "optimal selling-window deadline" while making clear PropSight is not telling them to sell. Example: "With 62 years left, your 60-year lease watch point is 2028, which is your optimal selling-window deadline if you are planning a sale. CPF and loan limits are buyer-specific, so younger buyers may become more constrained first."
+- **MARKET MOMENTUM NARRATIVE:** Do not just read the trend array as a list of numbers. Synthesize a narrative. If volume is stable alongside rising prices, explicitly state this reinforces seller pricing power; do NOT describe it as mixed or hedge with "it is important to consider both aspects." If volume is dropping but prices are rising, explain that "supply is tightening, giving sellers pricing power." If both are dropping, explain that "the market is cooling and buyers are retreating."
+- **THE 'SO WHAT?' RULE:** Every answer must pass the 'So What?' test. After stating a data point, you MUST add a sentence explaining what strategic action or understanding the homeowner should take from it.
+- **FORECAST CALCULATION EXPLAINER:** If the user asks how a prediction, valuation, or 5-year forecast is calculated, explain that PropSight reruns the prediction model once for each future year, keeping property attributes constant while updating time-based features such as flat age, remaining lease, and model-year effects. Explain that predicted_price is the central estimate, while price_low and price_high come from the model MAPE error band widened by 15% for each year into the future using 1 + 0.15 * year_offset. Use the supplied forecast_calculation_context when present to quote the actual years, final range, and lease movement. Clarify that this is a what-if projection under current market conditions, not a guaranteed macro forecast.
 - If the user is on the comparison page, explain panel differences objectively using the supplied comparison factors. Distinguish two question types:
   (a) SPECIFIC-CRITERION questions name one measurable factor — "best price per sqm", "best lease per dollar", "closest to MRT", "lowest sticker price", "largest floor area", "newest", "longest remaining lease". For these you MAY identify the panel that wins on that single factor and explain the trade-off using exact numbers. You MUST NOT generalise that win into an overall recommendation.
   (b) DECISION-SEEKING / overall-judgment questions ask which property is "a better investment", "the smarter buy", "the better deal", "worth it", "more efficient overall", "worth more long-term", "the right pick", "which one I should buy", "which I should choose", or any variant that asks you to crown a winner without a single named criterion. For these you MUST: open by stating PropSight cannot give investment or transaction advice, then compare the panels using neutral factual differences only (price, price per sqm, remaining lease, floor area, MRT distance, flat age) with the exact numbers from the supplied data, then close by inviting the user to weigh those against their own finances, life stage, and plans the platform doesn't see. NEVER name a "better", "preferred", "winner", "more efficient", "priced more efficiently", "stronger", or "best overall" panel for type (b) questions. NEVER imply one panel is the right choice.
   If no criterion is stated and the question is genuinely open-ended (e.g. "compare these"), compare value, location, lease, and size factually without declaring an overall winner.
 - If the user is on the prediction page and asks for broad market trends, town/street analytics, transaction volume, historical movement, lease decay charts, or district/area comparison, direct them to the Analytics page. Prediction explains one flat. However, if the user is asking what the visible market note, market shock, short-term market movement, or 1-month vs 3-month benchmark means for their estimate, answer directly using chart_data.market_shock instead of redirecting.
-- If the user asks "what will my flat be worth in X years?" or any forward-looking value question, you MUST run the scenario calculation below — do NOT just say "depends on many market factors" or punt straight to the 5-Year Forecast.
-  Calculation steps (use my_flat.predicted_price; if predicted_price is missing, then and only then punt to the 5-Year Forecast):
+- If the user asks "what will my flat be worth in X years?" or any forward-looking value question, first check chart_data.forecast. If a forecast row exists for the requested horizon/year, use that row directly: quote predicted_price as the central estimate, price_low-price_high as the range, remaining_lease if supplied, and say this is the 5-Year Forecast what-if projection, not a guaranteed valuation. Do NOT replace available forecast data with the scenario calculation.
+- If the requested horizon is outside chart_data.forecast, run the scenario calculation below — do NOT just say "depends on many market factors" or punt straight to the 5-Year Forecast.
+  Scenario calculation steps (use my_flat.predicted_price; if predicted_price is missing, then and only then punt to the 5-Year Forecast):
   (1) Anchor on my_flat.predicted_price as the current value.
   (2) Annual lease decay drag = abs(chart_data.lease_decay_breakdown.total_dollar_impact) ÷ chart_data.remaining_lease (or my_flat.remaining_lease). If lease_decay_breakdown is missing or zero, assume an annual drag of about 1.0% of predicted_price as a conservative HDB lease-decay baseline.
   (3) Area growth offset (CAGR): if chart_data.trend is supplied as a price series, compute the average year-on-year % change across it. If chart_data.trend is missing, use a long-run Singapore HDB resale baseline of about 3% per year (call this out explicitly as a baseline, not a forecast).
@@ -8183,7 +8513,7 @@ Rules:
   (1) If floor_area > 100 sqm AND dist_school < 1.0 km: "Young families prioritising school proximity and space."
   (2) If flat_type is "3-room" AND is_mature_estate is true: "Downsizers or singles in a mature estate with established amenities."
   (3) If storey_midpoint > 15 AND dist_mrt < 0.5 km: "Professionals or couples prioritising accessibility and views."
-  (4) If remaining_lease < 60: "Cash buyers only — CPF and bank loan restrictions significantly narrow the buyer pool."
+  (4) If remaining_lease < 60: "Some younger buyers may face prorated CPF or housing-loan limits because lease coverage to age 95 becomes harder to satisfy."
   After stating the profile, list the top 2 SHAP features that align with that buyer's priorities and explain why those features matter to that specific buyer type. Never recommend a transaction. Frame this as "if you were to sell, these are the features most likely to resonate with your most probable buyer."
 - If the user is on the prediction page and asks which flat/property/option is best value, best location, or which factor to prioritise between options, direct them to the Comparison page. Prediction explains one flat, not property-vs-property ranking.
 - If the user is on the analytics page and asks to generate or inspect a single-flat price estimate, direct them to the Predict page. Analytics explains market trends, town/street context, demand, and historical movement.
@@ -8197,7 +8527,7 @@ PropSight context:
 - It does not replace agents, provide transactional advisory, or tell users to buy, sell, or hold.
 
 Singapore HDB context to use where relevant:
-- Short remaining lease (<30 years) limits CPF usage and bank loan eligibility, which directly reduces buyer pool and resale value.
+- Short remaining lease can limit CPF usage and housing-loan eligibility. CPF and HDB loan limits depend on buyer age and whether the lease covers the youngest buyer to age 95; CPF generally requires at least 20 years of remaining lease.
 - HDB flats have a 5-year Minimum Occupation Period (MOP) before they can be sold on the open market — this restricts supply in any given year.
 - Low transaction count for a specific block often reflects estate composition (fewer units of that type) or owners holding past MOP, not necessarily low demand.
 - Price swings on blocks with fewer than 20 transactions can be driven by just 1–2 outlier sales; this is common for niche flat types or specific blocks.
@@ -8288,6 +8618,233 @@ def _build_ai_surface_desc(surface, active_section=""):
     if active_section:
         return f"the PropSight market analytics dashboard ({active_section} view)"
     return "the PropSight market analytics dashboard"
+
+
+def _is_analytics_flat_type_question(text):
+    text = str(text or "").lower()
+    return bool(re.search(
+        r"\b(flat\s*type(?:s)?|room\s*type(?:s)?|flat\s*mix|room\s*mix|type\s*mix)\b"
+        r".*\b(compare|comparison|distribution|breakdown|mix|perform|doing|demand|volume|price)\b"
+        r"|\b(compare|show|see|open)\b.*\b(flat\s*type(?:s)?|room\s*type(?:s)?|flat\s*mix|room\s*mix)\b",
+        text,
+    ))
+
+
+def _analytics_town_label(context):
+    filters = context.get("filters") if isinstance(context.get("filters"), dict) else {}
+    town = str(filters.get("town") or "this town").strip() or "this town"
+    return town.title() if town.isupper() else town
+
+
+def _is_analytics_demand_shift_question(text):
+    text = str(text or "").lower()
+    return bool(re.search(
+        r"\b(demand|buyer activity|transaction volume|transactions?|sales volume|sales activity)\b"
+        r".*\b(shift(?:ed)?|chang(?:ed|e)|rising|slowing|falling|trend|over time|volume|activity)\b"
+        r"|\bhow\s+has\b.*\b(demand|transaction|sales)\b.*\bshift(?:ed)?\b"
+        r"|\b(are|is)\b.*\btransactions?\b.*\b(rising|slowing|falling|stable)\b",
+        text,
+    ))
+
+
+def _build_analytics_demand_shift_response(question, context, format_preference=None):
+    if not _is_analytics_demand_shift_question(question):
+        return None
+    if not isinstance(context, dict):
+        context = {}
+
+    filters = context.get("filters") if isinstance(context.get("filters"), dict) else {}
+    town = _analytics_town_label(context)
+    flat_type = str(filters.get("flat_type") or "this flat type").strip() or "this flat type"
+    chart_data = context.get("chart_data") if isinstance(context.get("chart_data"), dict) else {}
+    rows = [
+        row for row in _sort_rows_by_year(_question_rows(chart_data.get("volume")))
+        if _coerce_float(row.get("txn_count")) is not None
+    ]
+
+    intro = f"Use the Transaction Volume chart to track {flat_type} demand in {town} over time."
+    if len(rows) < 2:
+        if format_preference == "bullets":
+            return (
+                f"- {intro}\n"
+                "- The available volume data is too limited to describe a shift reliably.\n"
+                "- Cross-check Flat Type Distribution to see how this flat type compares with the local mix."
+            )
+        return (
+            f"{intro} The available volume data is too limited to describe a shift reliably. "
+            "Cross-check Flat Type Distribution to see how this flat type compares with the local mix."
+        )
+
+    first, last = rows[0], rows[-1]
+    first_count = _coerce_float(first.get("txn_count")) or 0
+    last_count = _coerce_float(last.get("txn_count")) or 0
+    change = last_count - first_count
+    pct = ((last_count - first_count) / first_count * 100) if first_count else None
+    direction = "risen" if change > 0 else "fallen" if change < 0 else "stayed flat"
+    peak = max(rows, key=lambda row: _coerce_float(row.get("txn_count")) or 0)
+    low = min(rows, key=lambda row: _coerce_float(row.get("txn_count")) or 0)
+    pct_text = f" ({_format_ai_pct(pct)})" if pct is not None else ""
+    main = (
+        f"{flat_type} transaction volume in {town} has {direction} from "
+        f"{_format_ai_number(first_count)} transactions in {_row_label(first)} to "
+        f"{_format_ai_number(last_count)} in {_row_label(last)}{pct_text}."
+    )
+    peak_low = (
+        f"The busiest year was {_row_label(peak)} with "
+        f"{_format_ai_number(peak.get('txn_count'))} transactions, while the quietest was "
+        f"{_row_label(low)} with {_format_ai_number(low.get('txn_count'))}."
+    )
+    if abs(change) <= 1:
+        meaning = (
+            "That points to stable buyer activity rather than a clear demand surge or retreat."
+        )
+    elif change > 0:
+        meaning = (
+            "That points to more active buyer turnover for this flat type, although price trend should be checked before calling it stronger pricing momentum."
+        )
+    else:
+        meaning = (
+            "That points to lighter buyer turnover or fewer available sales, so individual transactions can carry more weight in the price trend."
+        )
+    next_step = "Use Transaction Volume for demand strength, then compare it with Price Trend to see whether prices moved with or against activity."
+
+    if format_preference == "bullets":
+        return "\n".join([
+            f"- {main}",
+            f"- {peak_low}",
+            f"- {meaning}",
+            f"- {next_step}",
+        ])
+
+    if format_preference == "detailed":
+        return " ".join([
+            main,
+            peak_low,
+            meaning,
+            "What this means for you: shifts in transaction count signal how active the local resale market is for your flat type, which affects how quickly comparable sales accumulate and how reliable the price trend looks.",
+            "Caveat: volume is also affected by how many owners choose to sell in a given year, so a lower count does not automatically mean weak demand — it may simply mean tighter supply or a smaller sample.",
+            "Cross-check the Price Trend chart on this Analytics page to see whether prices moved with or against this volume direction; that combination is what tells you about pricing power versus buyer hesitation.",
+            next_step,
+        ])
+
+    # DEFAULT — tight: headline + one-sentence meaning, no closing chart link.
+    return " ".join([main, meaning])
+
+
+def _flat_type_price_value(row):
+    price = _coerce_float(row.get("median_price"))
+    if price is None:
+        price = _coerce_float(row.get("avg_price"))
+    return price
+
+
+def _build_analytics_flat_type_response(question, context, format_preference=None):
+    if not _is_analytics_flat_type_question(question):
+        return None
+    if not isinstance(context, dict):
+        context = {}
+
+    town = _analytics_town_label(context)
+    chart_data = context.get("chart_data") if isinstance(context.get("chart_data"), dict) else {}
+    rows = [
+        row for row in _question_rows(chart_data.get("flat_type"))
+        if _row_label(row) not in ("item", "N/A")
+    ]
+
+    intro = (
+        f"You can compare flat types in {town} using the Flat Type Distribution chart "
+        "on this Analytics page."
+    )
+    if not rows:
+        if format_preference == "bullets":
+            return (
+                f"- Use the Flat Type Distribution chart on this Analytics page to compare flat types in {town}.\n"
+                "- It shows transaction volume and average price by flat type.\n"
+                "- Use it as a demand-mix view, not a direct ranking of which flat type is best."
+            )
+        return (
+            intro
+            + " It shows transaction volume and average price by flat type, so you can see "
+              "which room types make up local demand and how pricing differs."
+        )
+
+    activity_text = ""
+    price_text = ""
+    count_rows = [
+        row for row in rows
+        if _coerce_float(row.get("txn_count")) is not None
+    ]
+    if count_rows:
+        top_count = sorted(
+            count_rows,
+            key=lambda row: _coerce_float(row.get("txn_count")) or 0,
+            reverse=True,
+        )[:3]
+        activity_text = (
+            "By activity, "
+            + ", ".join(
+                f"{_row_label(row)} has {_format_ai_number(row.get('txn_count'))} transactions"
+                for row in top_count
+            )
+            + "."
+        )
+
+    price_rows = [
+        row for row in rows
+        if _flat_type_price_value(row) is not None
+    ]
+    if price_rows:
+        high = max(price_rows, key=lambda row: _flat_type_price_value(row) or 0)
+        low = min(price_rows, key=lambda row: _flat_type_price_value(row) or 0)
+        price_text = (
+            f"By price, {_row_label(high)} is highest at "
+            f"{_format_ai_currency(_flat_type_price_value(high))}, while "
+            f"{_row_label(low)} is lowest at {_format_ai_currency(_flat_type_price_value(low))}."
+        )
+
+    if format_preference == "bullets":
+        bullet_lines = [f"- Compare flat types in {town} using the Flat Type Distribution chart on this Analytics page."]
+        if activity_text:
+            bullet_lines.append(f"- {activity_text}")
+        if price_text:
+            bullet_lines.append(f"- {price_text}")
+        bullet_lines.append("- Use this as a demand-mix view, not a direct ranking of which flat type is best.")
+        return "\n".join(bullet_lines)
+
+    if format_preference == "detailed":
+        parts = [intro]
+        if activity_text:
+            parts.append(activity_text)
+            parts.append(
+                "What this means for you: activity is the demand-mix signal — it shows which "
+                "flat types are actually trading more often in the selected town and period, "
+                "which affects how thick the comparable-sales pool is when you benchmark your flat."
+            )
+        if price_text:
+            parts.append(price_text)
+            parts.append(
+                "The price gap mainly reflects flat size and transaction mix, so it should not "
+                "be read as one flat type being objectively better — a 5-room median sitting "
+                "above a 3-room median is mostly the floor-area difference, not a quality verdict."
+            )
+        parts.append(
+            "Caveat: small sample years or one or two outlier sales can skew either the activity "
+            "count or the median price, so check whether transaction counts are thin before reading "
+            "too much into a single year's number."
+        )
+        parts.append(
+            "Use the Flat Type Distribution chart to see where your selected flat type sits against "
+            "the local mix, then cross-check Price Trend and Transaction Volume for momentum direction."
+        )
+        return " ".join(parts)
+
+    # DEFAULT — tight: just the core data points, no caveats or chart suggestion.
+    parts = [intro]
+    if activity_text:
+        parts.append(activity_text)
+    if price_text:
+        parts.append(price_text)
+    return " ".join(parts)
 
 
 @app.route("/api/ai_questions", methods=["POST"])
@@ -8392,6 +8949,48 @@ def api_ai_answer():
     chart_data = context.get("chart_data", {})
     my_flat = context.get("my_flat") or {}
 
+    if surface == "analytics":
+        raw_format = body.get("format_preference", "__omit__")
+        if raw_format == "__omit__":
+            format_preference = session.get("chatbot_format_preference")
+        else:
+            try:
+                format_preference = _normalize_chatbot_format_preference(raw_format)
+            except ValueError:
+                return jsonify({"error": "Invalid format"}), 400
+        demand_answer = _build_analytics_demand_shift_response(
+            question,
+            context,
+            format_preference,
+        )
+        if demand_answer:
+            tier = session.get("subscription_tier", "general")
+            if tier != "premium":
+                _log_feature_view(_session_user_id(), "ai_answer")
+                remaining = max(0, GENERAL_DAILY_AI_ANSWER_LIMIT - used - 1)
+            else:
+                remaining = -1
+            return jsonify({
+                "answer": _polish_ai_homeowner_text(demand_answer),
+                "remaining": remaining,
+            })
+        flat_type_answer = _build_analytics_flat_type_response(
+            question,
+            context,
+            format_preference,
+        )
+        if flat_type_answer:
+            tier = session.get("subscription_tier", "general")
+            if tier != "premium":
+                _log_feature_view(_session_user_id(), "ai_answer")
+                remaining = max(0, GENERAL_DAILY_AI_ANSWER_LIMIT - used - 1)
+            else:
+                remaining = -1
+            return jsonify({
+                "answer": _polish_ai_homeowner_text(flat_type_answer),
+                "remaining": remaining,
+            })
+
     if surface == "prediction" and isinstance(chart_data, dict):
         shap_focus = _build_prediction_shap_focus(question, chart_data, my_flat)
         if shap_focus:
@@ -8448,6 +9047,8 @@ def api_ai_answer():
 
 _AI_CHAT_SYSTEM_PROMPT = """You are a Singapore HDB (public housing) market analyst chatbot.
 
+{format_preference_primary}
+
 The user is viewing {surface_desc}: {filter_desc}
 
 {my_flat_context}
@@ -8461,13 +9062,20 @@ Rules:
 - Explain what the data MEANS for homeowners in plain, simple language. Assume the user doesn't understand property market jargon.
 - Always connect trends to the user's home value: "this means your flat is likely worth more/less because..."
 - If the "THE USER'S OWN FLAT" block above is populated, tie answers specifically to that flat. Refer to it as "your flat".
+- **FORECAST LEASE THRESHOLD:** When discussing the 5-year forecast, check if remaining_lease will drop below 60 years within the forecast window. If it will, flag this as a lease watch zone, not an automatic cutoff. Explain that CPF and housing-loan limits depend on each buyer's age and whether the lease can cover them to age 95, so younger buyers may face tighter limits.
+- **MICRO-LOCAL FIRST:** When evaluating a property, always benchmark it against the immediate micro-location (the street or block) first, before comparing it to the broader town average. Homeowners care about how their block performs against the block next door.
+- **LEASE ACTION WINDOWS:** When discussing lease decay, do not just state the dollar impact. Always calculate and state the year when remaining_lease reaches 60 years using lease_commence or lease_commence_year + 39 when supplied. State this as the homeowner's "optimal selling-window deadline" while making clear PropSight is not telling them to sell. Example: "With 62 years left, your 60-year lease watch point is 2028, which is your optimal selling-window deadline if you are planning a sale. CPF and loan limits are buyer-specific, so younger buyers may become more constrained first."
+- **MARKET MOMENTUM NARRATIVE:** Do not just read the trend array as a list of numbers. Synthesize a narrative. If volume is stable alongside rising prices, explicitly state this reinforces seller pricing power; do NOT describe it as mixed or hedge with "it is important to consider both aspects." If volume is dropping but prices are rising, explain that "supply is tightening, giving sellers pricing power." If both are dropping, explain that "the market is cooling and buyers are retreating."
+- **THE 'SO WHAT?' RULE:** Every answer must pass the 'So What?' test. After stating a data point, you MUST add a sentence explaining what strategic action or understanding the homeowner should take from it.
+- **FORECAST CALCULATION EXPLAINER:** If the user asks how a prediction, valuation, or 5-year forecast is calculated, explain that PropSight reruns the prediction model once for each future year, keeping property attributes constant while updating time-based features such as flat age, remaining lease, and model-year effects. Explain that predicted_price is the central estimate, while price_low and price_high come from the model MAPE error band widened by 15% for each year into the future using 1 + 0.15 * year_offset. Use the supplied forecast_calculation_context when present to quote the actual years, final range, and lease movement. Clarify that this is a what-if projection under current market conditions, not a guaranteed macro forecast.
 - On the comparison page, explain how the compared panels differ and how those factors may push estimates up or down. Distinguish two question types:
   (a) SPECIFIC-CRITERION questions name one measurable factor — "best price per sqm", "best lease per dollar", "closest to MRT", "lowest sticker price", "largest floor area", "newest", "longest remaining lease". For these you MAY identify the panel that wins on that single factor and explain the trade-off using exact numbers. You MUST NOT generalise that win into an overall recommendation.
   (b) DECISION-SEEKING / overall-judgment questions ask which property is "a better investment", "the smarter buy", "the better deal", "worth it", "more efficient overall", "worth more long-term", "the right pick", "which one I should buy", "which I should choose", or any variant that asks you to crown a winner without a single named criterion. For these you MUST: open by stating PropSight cannot give investment or transaction advice, then compare the panels using neutral factual differences only (price, price per sqm, remaining lease, floor area, MRT distance, flat age) with the exact numbers from the supplied data, then close by inviting the user to weigh those against their own finances, life stage, and plans the platform doesn't see. NEVER name a "better", "preferred", "winner", "more efficient", "priced more efficiently", "stronger", or "best overall" panel for type (b) questions. NEVER imply one panel is the right choice.
   If no criterion is stated and the question is genuinely open-ended (e.g. "compare these"), compare value, location, lease, and size factually without declaring an overall winner.
 - On the prediction page, route broad market trend, town/street analytics, transaction volume, lease decay chart, and district/area questions to the Analytics page; Prediction explains one flat's estimate. However, if the user is asking what the visible market note, market shock, short-term market movement, or 1-month vs 3-month benchmark means for their estimate, answer directly using chart_data.market_shock instead of redirecting.
-- If the user asks "what will my flat be worth in X years?" or any forward-looking value question, you MUST run the scenario calculation below — do NOT just say "depends on many market factors" or punt straight to the 5-Year Forecast.
-  Calculation steps (use my_flat.predicted_price; if predicted_price is missing, then and only then punt to the 5-Year Forecast):
+- If the user asks "what will my flat be worth in X years?" or any forward-looking value question, first check chart_data.forecast. If a forecast row exists for the requested horizon/year, use that row directly: quote predicted_price as the central estimate, price_low-price_high as the range, remaining_lease if supplied, and say this is the 5-Year Forecast what-if projection, not a guaranteed valuation. Do NOT replace available forecast data with the scenario calculation.
+- If the requested horizon is outside chart_data.forecast, run the scenario calculation below — do NOT just say "depends on many market factors" or punt straight to the 5-Year Forecast.
+  Scenario calculation steps (use my_flat.predicted_price; if predicted_price is missing, then and only then punt to the 5-Year Forecast):
   (1) Anchor on my_flat.predicted_price as the current value.
   (2) Annual lease decay drag = abs(chart_data.lease_decay_breakdown.total_dollar_impact) ÷ chart_data.remaining_lease (or my_flat.remaining_lease). If lease_decay_breakdown is missing or zero, assume an annual drag of about 1.0% of predicted_price as a conservative HDB lease-decay baseline.
   (3) Area growth offset (CAGR): if chart_data.trend is supplied as a price series, compute the average year-on-year % change across it. If chart_data.trend is missing, use a long-run Singapore HDB resale baseline of about 3% per year (call this out explicitly as a baseline, not a forecast).
@@ -8483,7 +9091,7 @@ Rules:
   (1) If floor_area > 100 sqm AND dist_school < 1.0 km: "Young families prioritising school proximity and space."
   (2) If flat_type is "3-room" AND is_mature_estate is true: "Downsizers or singles in a mature estate with established amenities."
   (3) If storey_midpoint > 15 AND dist_mrt < 0.5 km: "Professionals or couples prioritising accessibility and views."
-  (4) If remaining_lease < 60: "Cash buyers only — CPF and bank loan restrictions significantly narrow the buyer pool."
+  (4) If remaining_lease < 60: "Some younger buyers may face prorated CPF or housing-loan limits because lease coverage to age 95 becomes harder to satisfy."
   After stating the profile, list the top 2 SHAP features from chart_data.shap_features that align with that buyer's priorities and explain why those features matter to that specific buyer type. Never recommend a transaction. Frame this as "if you were to sell, these are the features most likely to resonate with your most probable buyer."
 - Proactive market shock note: if chart_data.market_shock.severity is "high" or "very_high" AND this is the first message in the conversation (i.e., clean_history is empty / no prior turns), prepend the following ONE line to your answer before addressing the user's question:
   "Market note: [town] is currently [X]% [above/below] its 3-month benchmark — this is a recent local move, not a long-term trend. Your flat's $[predicted_price] estimate reflects this."
@@ -8515,7 +9123,7 @@ Rules:
   a recent local move, not a long-term trend. Do not paraphrase the
   percentage away. Do not invent additional causes.
 - When discussing reliability or model error, do not overstate accuracy. Frame it as a data-driven estimate or second opinion, not a guaranteed valuation.
-- Singapore HDB context to apply where relevant: short remaining lease (<30 years) limits CPF usage and bank loan eligibility, reducing buyer pool and resale value; HDB flats have a 5-year MOP before they can be sold on the open market; low transaction count for a specific block often reflects estate composition or owners holding past MOP, not low demand; price swings on blocks with fewer than 20 transactions can be driven by 1–2 outlier sales.
+- Singapore HDB context to apply where relevant: short remaining lease can limit CPF usage and housing-loan eligibility. CPF and HDB loan limits depend on buyer age and whether the lease covers the youngest buyer to age 95; CPF generally requires at least 20 years of remaining lease. HDB flats have a 5-year MOP before they can be sold on the open market; low transaction count for a specific block often reflects estate composition or owners holding past MOP, not low demand; price swings on blocks with fewer than 20 transactions can be driven by 1-2 outlier sales.
 - Never give buy, sell, hold, or upgrade advice. PropSight is a decision-support tool only — help the user understand their market position, not tell them what to do.
 - Be concise: for normal questions, answer in 3-4 sentences under 140 words. If the user explicitly asks for more detail, you may go up to 6 sentences but never exceed 240 words.
 - Always end on a complete sentence. Do not trail off mid-thought.
@@ -8558,21 +9166,95 @@ def _wrap_ai_user_question(text):
     return f"{AI_USER_QUESTION_OPEN_TAG}\n{safe_text}\n{AI_USER_QUESTION_CLOSE_TAG}"
 
 
+def _build_chatbot_format_preference_primary(preference):
+    """Top-of-prompt format directive. Sits BEFORE all other rules so Gemini
+    treats it as the primary output contract instead of a footnote at the end.
+
+    The detailed clause at the bottom of the prompt is reinforcement — this
+    block is what actually drives length and structure.
+    """
+    if preference == "bullets":
+        return (
+            "PRIMARY OUTPUT RULE — REPLY STYLE = BULLETS (overrides every formatting "
+            "instruction below):\n"
+            "Output a bulleted list and nothing else. NO introductory paragraph. "
+            "NO closing summary. Each bullet ≤ 15 words. Maximum 5 bullets. "
+            "If a downstream rule asks for a numbered list (e.g. shap_answer_focus), "
+            "use that numbered list but still cap each item at 15 words. "
+            "DO NOT write paragraphs in this mode under any circumstance."
+        )
+    if preference == "detailed":
+        return (
+            "PRIMARY OUTPUT RULE — REPLY STYLE = DETAILED (overrides every concision "
+            "instruction below):\n"
+            "Target reply length is 280 to 360 words across 2 to 3 short paragraphs. "
+            "This OVERRIDES the 140-word and 240-word caps stated later in the prompt. "
+            "Every reply MUST contain all four of these sections, in order:\n"
+            "  (A) HEADLINE: first sentence with the exact dollar / percent / year figure.\n"
+            "  (B) WHAT THIS MEANS FOR YOU: 2-3 sentences translating the numbers into "
+            "homeowner-plain language.\n"
+            "  (C) ONE EXPLICIT CAVEAT or limitation (small comparable sample, lease-decay "
+            "assumption, recent market shock, model error band, etc.) — never skip this.\n"
+            "  (D) ONE NAMED PropSight chart or section to inspect next (e.g. \"Open the "
+            "Lease Decay chart\", \"Check the Price Trend section\").\n"
+            "When shap_answer_focus produces a numbered list, expand the same structure "
+            "INTO each list item (each item gets a meaning sentence + caveat where relevant). "
+            "If your draft reply is shorter than 250 words, you have not satisfied this rule — "
+            "rewrite it longer with the missing section."
+        )
+    return (
+        "PRIMARY OUTPUT RULE — REPLY STYLE = DEFAULT (overrides the 240-word more-detailed "
+        "allowance below):\n"
+        "Match the free-tier reply envelope exactly: 3 to 4 sentences, ≤ 140 words, single "
+        "paragraph. DO NOT use the up-to-6-sentences / 240-word expansion mentioned later in "
+        "the prompt — that allowance is reserved for the Detailed preset only. "
+        "When shap_answer_focus produces a numbered list, each item is one short line: "
+        "label + dollar figure ONLY. NO meaning sentence per item. NO caveat per item. "
+        "NO closing 'inspect next' chart link. "
+        "If your draft reply is longer than 140 words, you have violated this rule — cut it "
+        "back before responding."
+    )
+
+
 def _build_chatbot_format_preference_clause(preference):
     """Render a system-prompt clause honouring the user's chosen reply format."""
     if preference == "bullets":
         return (
-            "\nThe user has explicitly chosen short bullet-point replies. "
+            "\nREPLY STYLE = BULLETS. The user has explicitly chosen bullet-point replies. "
             "Format every answer as a brief bulleted list — honour this across all turns, "
-            "including after history truncation."
+            "including after history truncation. Each bullet ≤15 words, max 5 bullets, "
+            "no introductory paragraph before the list, no closing summary after it. "
+            "When shap_answer_focus requires a numbered list, use that numbered list "
+            "instead of bullets but keep each item ≤15 words."
         )
     if preference == "detailed":
         return (
-            "\nThe user has explicitly chosen more detailed replies. Use the longer-answer "
-            "allowance (up to 6 sentences / 240 words) by default and unpack the reasoning, "
-            "while still respecting the grounding and anti-jargon rules above."
+            "\nREPLY STYLE = DETAILED. This OVERRIDES the default 140-word / 240-word concision "
+            "caps above. Target 280-360 words across 2-3 short paragraphs (or a richer numbered "
+            "list when shap_answer_focus requires one — in that case, each list item gets one "
+            "extra plain-English meaning sentence after the number). "
+            "Every reply MUST include all four of: "
+            "(1) the headline answer with exact numbers in the first sentence; "
+            "(2) a 'what this means for you' explanation that translates the numbers into "
+            "homeowner-plain language; "
+            "(3) one explicit limitation, caveat, or uncertainty (small comparable sample, "
+            "lease-decay assumption, recent market shock, model error band, etc.); "
+            "(4) one specific PropSight chart or section to inspect next, named exactly. "
+            "Keep all claims grounded in the supplied context and still follow the anti-jargon "
+            "and no-advice rules above."
         )
-    return ""
+    # Default preset — match the free-tier (general) reply envelope so a premium
+    # user on Default sees the same shape of answer as a non-premium user.
+    return (
+        "\nREPLY STYLE = DEFAULT. This must match the general-tier reply envelope exactly: "
+        "3-4 sentences, ≤140 words, single paragraph for narrative answers. "
+        "DO NOT use the 'up to 6 sentences / 240 words' more-detailed allowance from the "
+        "concision rule above — that expansion is reserved for the Detailed preset. "
+        "When shap_answer_focus.kind requires a ranked or numbered list, keep each list item "
+        "to one short line (label + dollar figure only — no extra explanation per item). "
+        "Lead with the headline number, add the plain-English meaning, then stop. Do not pad "
+        "with extra caveats or 'inspect next' chart links unless the user explicitly asks."
+    )
 
 
 def _truncate_ai_chat_history_turn(text):
@@ -8793,6 +9475,52 @@ def api_ai_chat():
     context_limit = 3200 if surface == "comparison" else 4000
     chart_data = context.get("chart_data", {})
     my_flat = context.get("my_flat") or {}
+    if surface == "analytics":
+        demand_reply = _build_analytics_demand_shift_response(
+            message,
+            context,
+            format_preference,
+        )
+        if demand_reply:
+            reply = _polish_ai_homeowner_text(demand_reply)
+            if memory_surface and memory_scope_key:
+                try:
+                    _save_ai_chat_memory(
+                        _session_user_id(),
+                        memory_surface,
+                        memory_scope_key,
+                        memory_history + [
+                            {"role": "user", "text": message},
+                            {"role": "model", "text": reply},
+                        ],
+                    )
+                except SupabaseError as exc:
+                    app.logger.warning("Could not save account chat memory: %s", exc)
+            _log_feature_view(_session_user_id(), "ai_chat")
+            return jsonify({"reply": reply})
+        flat_type_reply = _build_analytics_flat_type_response(
+            message,
+            context,
+            format_preference,
+        )
+        if flat_type_reply:
+            reply = _polish_ai_homeowner_text(flat_type_reply)
+            if memory_surface and memory_scope_key:
+                try:
+                    _save_ai_chat_memory(
+                        _session_user_id(),
+                        memory_surface,
+                        memory_scope_key,
+                        memory_history + [
+                            {"role": "user", "text": message},
+                            {"role": "model", "text": reply},
+                        ],
+                    )
+                except SupabaseError as exc:
+                    app.logger.warning("Could not save account chat memory: %s", exc)
+            _log_feature_view(_session_user_id(), "ai_chat")
+            return jsonify({"reply": reply})
+
     if surface == "prediction" and isinstance(chart_data, dict):
         shap_focus = _build_prediction_shap_focus(message, chart_data, my_flat)
         if shap_focus:
@@ -8812,6 +9540,9 @@ def api_ai_chat():
         filter_desc=filter_desc,
         my_flat_context=my_flat_context,
         context_data=context_data,
+        format_preference_primary=_build_chatbot_format_preference_primary(
+            format_preference
+        ),
         format_preference=_build_chatbot_format_preference_clause(
             format_preference
         ),
@@ -8842,7 +9573,7 @@ def api_ai_chat():
         # Add current message
         contents.append({"role": "user", "parts": [{"text": _wrap_ai_user_question(message)}]})
 
-    temp = 0.15 if surface == "prediction" else 0.3
+    temp = 0.3
     text = _call_gemini_chat(contents, max_tokens=AI_CHAT_MAX_TOKENS, temperature=temp)
     if not text:
         return jsonify({"error": "AI temporarily unavailable"}), 503
@@ -10099,7 +10830,7 @@ def api_admin_model_training_report(run_id):
 
 if __name__ == "__main__":
     app.run(
-        debug=True,
+        debug=os.environ.get("FLASK_DEBUG", "false").lower() == "true",
         host=os.environ.get("FLASK_HOST", "127.0.0.1"),
         port=int(os.environ.get("FLASK_PORT", "5001")),
     )

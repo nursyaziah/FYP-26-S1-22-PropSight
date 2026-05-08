@@ -294,7 +294,8 @@ RETURNS TABLE(
     ORDER BY t.name;
 $$;
 
--- Yearly price trend with median (industry standard) and PSF metric
+-- Yearly price trend with median (industry standard) and median PSF metric.
+-- avg_psf is kept as a legacy API column name; its value is median $/sqm.
 DROP FUNCTION IF EXISTS rpc_api_price_trend_simple(TEXT, TEXT, TEXT, TEXT);
 CREATE FUNCTION rpc_api_price_trend_simple(
     p_town TEXT DEFAULT NULL,
@@ -305,7 +306,7 @@ CREATE FUNCTION rpc_api_price_trend_simple(
 RETURNS TABLE(
     year INTEGER, avg_price DOUBLE PRECISION, median_price DOUBLE PRECISION,
     min_price DOUBLE PRECISION, max_price DOUBLE PRECISION, txn_count BIGINT,
-    avg_psf DOUBLE PRECISION
+    avg_psf DOUBLE PRECISION, median_psf DOUBLE PRECISION
 ) LANGUAGE SQL STABLE AS $$
     SELECT
         tx.year,
@@ -314,7 +315,8 @@ RETURNS TABLE(
         ROUND(MIN(tx.resale_price)::NUMERIC)::DOUBLE PRECISION,
         ROUND(MAX(tx.resale_price)::NUMERIC)::DOUBLE PRECISION,
         COUNT(*),
-        ROUND(AVG(tx.resale_price / NULLIF(tx.floor_area_sqm, 0))::NUMERIC)::DOUBLE PRECISION
+        ROUND((percentile_cont(0.5) WITHIN GROUP (ORDER BY tx.resale_price / NULLIF(tx.floor_area_sqm, 0)))::NUMERIC)::DOUBLE PRECISION,
+        ROUND((percentile_cont(0.5) WITHIN GROUP (ORDER BY tx.resale_price / NULLIF(tx.floor_area_sqm, 0)))::NUMERIC)::DOUBLE PRECISION
     FROM transactions tx
     JOIN blocks     b  ON tx.block_id     = b.id
     JOIN towns      t  ON b.town_id       = t.id
@@ -328,7 +330,8 @@ RETURNS TABLE(
 $$;
 
 -- Yearly street-level price trend within a town
-CREATE OR REPLACE FUNCTION rpc_api_street_price_trend(
+DROP FUNCTION IF EXISTS rpc_api_street_price_trend(TEXT, TEXT, TEXT, TEXT);
+CREATE FUNCTION rpc_api_street_price_trend(
     p_town TEXT,
     p_flat_type TEXT DEFAULT NULL,
     p_street_name TEXT DEFAULT NULL,
@@ -338,6 +341,7 @@ RETURNS TABLE(
     street_name TEXT,
     year INTEGER,
     avg_price DOUBLE PRECISION,
+    median_price DOUBLE PRECISION,
     min_price DOUBLE PRECISION,
     max_price DOUBLE PRECISION,
     txn_count BIGINT,
@@ -348,11 +352,12 @@ RETURNS TABLE(
         b.street_name,
         tx.year,
         ROUND(AVG(tx.resale_price)::NUMERIC)::DOUBLE PRECISION,
+        ROUND(percentile_cont(0.5) WITHIN GROUP (ORDER BY tx.resale_price)::NUMERIC)::DOUBLE PRECISION,
         ROUND(MIN(tx.resale_price)::NUMERIC)::DOUBLE PRECISION,
         ROUND(MAX(tx.resale_price)::NUMERIC)::DOUBLE PRECISION,
         COUNT(*),
         ROUND(AVG(tx.floor_area_sqm)::NUMERIC)::DOUBLE PRECISION,
-        ROUND(AVG(tx.resale_price / NULLIF(tx.floor_area_sqm, 0))::NUMERIC)::DOUBLE PRECISION
+        ROUND((percentile_cont(0.5) WITHIN GROUP (ORDER BY tx.resale_price / NULLIF(tx.floor_area_sqm, 0)))::NUMERIC)::DOUBLE PRECISION
     FROM transactions tx
     JOIN blocks b ON tx.block_id = b.id
     JOIN towns t ON b.town_id = t.id
@@ -370,7 +375,7 @@ DROP FUNCTION IF EXISTS rpc_api_district_comparison();
 CREATE FUNCTION rpc_api_district_comparison()
 RETURNS TABLE(
     town TEXT, avg_price DOUBLE PRECISION, median_price DOUBLE PRECISION,
-    txn_count BIGINT, avg_area DOUBLE PRECISION, psf DOUBLE PRECISION
+    txn_count BIGINT, avg_area DOUBLE PRECISION, psf DOUBLE PRECISION, median_psf DOUBLE PRECISION
 ) LANGUAGE SQL STABLE AS $$
     SELECT
         t.name,
@@ -378,7 +383,8 @@ RETURNS TABLE(
         ROUND(percentile_cont(0.5) WITHIN GROUP (ORDER BY tx.resale_price)::NUMERIC)::DOUBLE PRECISION,
         COUNT(*),
         ROUND(AVG(tx.floor_area_sqm)::NUMERIC)::DOUBLE PRECISION,
-        ROUND(AVG(tx.resale_price / NULLIF(tx.floor_area_sqm, 0))::NUMERIC)::DOUBLE PRECISION
+        ROUND((percentile_cont(0.5) WITHIN GROUP (ORDER BY tx.resale_price / NULLIF(tx.floor_area_sqm, 0)))::NUMERIC)::DOUBLE PRECISION,
+        ROUND((percentile_cont(0.5) WITHIN GROUP (ORDER BY tx.resale_price / NULLIF(tx.floor_area_sqm, 0)))::NUMERIC)::DOUBLE PRECISION
     FROM transactions tx
     JOIN blocks b ON tx.block_id = b.id
     JOIN towns  t ON b.town_id   = t.id
@@ -390,18 +396,20 @@ $$;
 -- Flat type breakdown for a town or specific address scope.
 -- Town-only requests stay recent-focused, while street/block requests use
 -- full available history so address-specific option lists stay complete.
-CREATE OR REPLACE FUNCTION rpc_api_flat_type_breakdown(
+DROP FUNCTION IF EXISTS rpc_api_flat_type_breakdown(TEXT, TEXT, TEXT);
+CREATE FUNCTION rpc_api_flat_type_breakdown(
     p_town TEXT DEFAULT NULL,
     p_street_name TEXT DEFAULT NULL,
     p_block TEXT DEFAULT NULL
 )
 RETURNS TABLE(
-    flat_type TEXT, avg_price DOUBLE PRECISION,
+    flat_type TEXT, avg_price DOUBLE PRECISION, median_price DOUBLE PRECISION,
     txn_count BIGINT, avg_area DOUBLE PRECISION
 ) LANGUAGE SQL STABLE AS $$
     SELECT
         ft.name,
         ROUND(AVG(tx.resale_price)::NUMERIC)::DOUBLE PRECISION,
+        ROUND(percentile_cont(0.5) WITHIN GROUP (ORDER BY tx.resale_price)::NUMERIC)::DOUBLE PRECISION,
         COUNT(*),
         ROUND(AVG(tx.floor_area_sqm)::NUMERIC)::DOUBLE PRECISION
     FROM transactions tx
@@ -579,17 +587,19 @@ LANGUAGE SQL STABLE AS $$
 $$;
 
 -- Lease decay data for analytics
-CREATE OR REPLACE FUNCTION rpc_lease_decay(
+DROP FUNCTION IF EXISTS rpc_lease_decay(TEXT, TEXT, TEXT, TEXT);
+CREATE FUNCTION rpc_lease_decay(
     p_town TEXT,
     p_flat_type TEXT DEFAULT NULL,
     p_street_name TEXT DEFAULT NULL,
     p_block TEXT DEFAULT NULL
 )
-RETURNS TABLE(lease_bucket INTEGER, avg_price DOUBLE PRECISION, txn_count BIGINT)
+RETURNS TABLE(lease_bucket INTEGER, avg_price DOUBLE PRECISION, median_price DOUBLE PRECISION, txn_count BIGINT)
 LANGUAGE SQL STABLE AS $$
     SELECT
         (CAST(tx.remaining_lease AS INT) / 10) * 10,
         ROUND(AVG(tx.resale_price)::NUMERIC)::DOUBLE PRECISION,
+        ROUND(percentile_cont(0.5) WITHIN GROUP (ORDER BY tx.resale_price)::NUMERIC)::DOUBLE PRECISION,
         COUNT(*)
     FROM transactions tx
     JOIN blocks b ON tx.block_id = b.id
