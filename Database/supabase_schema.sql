@@ -818,3 +818,21 @@ LANGUAGE SQL STABLE AS $$
     ORDER BY random()
     LIMIT GREATEST(1, LEAST(p_limit, 20));
 $$;
+
+-- ── 8. Row-level security defaults ─────────────────────────────
+-- All public tables have RLS enabled.
+-- PropSight's backend uses the service_role key, which bypasses
+-- RLS, so the webapp continues to function with no policies.
+-- No policies are added because the Data API is not exposed to
+-- anon or authenticated clients; all client traffic is routed
+-- through Flask server-side handlers.
+
+alter table public.users             enable row level security;
+alter table public.saved_predictions enable row level security;
+alter table public.feature_view_log  enable row level security;
+alter table public.transactions      enable row level security;
+alter table public.blocks            enable row level security;
+alter table public.flat_types        enable row level security;
+alter table public.flat_models       enable row level security;
+alter table public.towns             enable row level security;
+alter table public.model_versions    enable row level security;
