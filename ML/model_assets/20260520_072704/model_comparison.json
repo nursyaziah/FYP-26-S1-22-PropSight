@@ -1,0 +1,68 @@
+{
+  "winner": {
+    "winner": "catboost",
+    "selection_metric": "val_mape",
+    "val_mape": 3.5852,
+    "val_rmse": 33461.95,
+    "test_rmse": 36952.93,
+    "test_r2": 0.970349,
+    "test_mape": 3.7793,
+    "runner_up": "lgbm",
+    "runner_up_val_mape": 3.7514,
+    "justification": "catboost achieved the lowest validation MAPE of 3.59%. Runner-up on validation: lgbm at 3.75% MAPE. Pre-refit winner test snapshot: RMSE=38,951  R2=0.9671  MAPE=3.96%. Final deployed test after train+val refit: RMSE=36,953  R2=0.9703  MAPE=3.78%. Refit test MAPE delta: -0.19pp. The ensemble is excluded from winner selection (meta-learner leakage + Render memory constraint).",
+    "pre_refit_test_mape": 3.9643,
+    "pre_refit_test_rmse": 38950.59,
+    "pre_refit_test_r2": 0.967057,
+    "refit_test_mape": 3.7793,
+    "refit_test_rmse": 36952.93,
+    "refit_test_r2": 0.970349
+  },
+  "training_config": {
+    "xgb_trials": 25,
+    "lgbm_trials": 25,
+    "catboost_trials": 25,
+    "xgb_n_estimators": 2000,
+    "lgbm_n_estimators": 2000,
+    "catboost_n_estimators": 2000,
+    "early_stopping_rounds": 50,
+    "tuning_sample_size": 250000,
+    "rf_estimators": 300,
+    "model_n_jobs": -1,
+    "fresh_tuning": false
+  },
+  "training_config_notes": [],
+  "all_models": {
+    "xgboost": {
+      "val_rmse": 35442.25,
+      "val_r2": 0.971188,
+      "val_mape": 3.782,
+      "test_rmse": 42278.35,
+      "test_r2": 0.961187,
+      "test_mape": 4.4414
+    },
+    "lgbm": {
+      "val_rmse": 35208.86,
+      "val_r2": 0.971566,
+      "val_mape": 3.7514,
+      "test_rmse": 41441.32,
+      "test_r2": 0.962709,
+      "test_mape": 4.2182
+    },
+    "catboost": {
+      "val_rmse": 33461.95,
+      "val_r2": 0.974318,
+      "val_mape": 3.5852,
+      "test_rmse": 38950.59,
+      "test_r2": 0.967057,
+      "test_mape": 3.9643
+    },
+    "ensemble": {
+      "val_rmse": 33279.2,
+      "val_r2": 0.974598,
+      "val_mape": 3.5569,
+      "test_rmse": 39084.18,
+      "test_r2": 0.96683,
+      "test_mape": 3.9673
+    }
+  }
+}
