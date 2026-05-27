@@ -39,5 +39,5 @@
   ],
   "n_train_rows": 256784,
   "optuna_objective": "rmse",
-  "timestamp": "2026-05-20T07:27:04Z"
+  "timestamp": "2026-05-27T07:42:09Z"
 }

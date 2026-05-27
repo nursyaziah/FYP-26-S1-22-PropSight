@@ -1,0 +1,106 @@
+======================================================================
+HDB RESALE PRICE PREDICTION — TRAINING REPORT
+======================================================================
+
+======================================================================
+TRAINING CONFIG
+======================================================================
+  XGB_TRIALS=25, LGBM_TRIALS=25, CATBOOST_TRIALS=25, XGB_N_ESTIMATORS=2000, LGBM_N_ESTIMATORS=2000, CATBOOST_N_ESTIMATORS=2000, EARLY_STOPPING_ROUNDS=50, TUNING_SAMPLE_SIZE=250,000, RF_ESTIMATORS=300, MODEL_N_JOBS=-1, FRESH_TUNING=False
+
+======================================================================
+MODEL RESULTS
+======================================================================
+  Note: TEST rows below are pre-refit candidate snapshots.
+  The selected winner's final deployed metrics appear in the WINNER section.
+
+--- XGBOOST ---
+  VAL: RMSE=35,337  MAE=24,900  R2=0.9714  MAPE=3.80%
+  VAL flat_type breakdown:
+    1 Room                MAE=SGD     18,758  (n=2)
+    2 Room                MAE=SGD     15,284  (n=183)
+    3 Room                MAE=SGD     19,567  (n=1,428)
+    4 Room                MAE=SGD     23,636  (n=2,637)
+    5 Room                MAE=SGD     30,759  (n=1,405)
+    Executive             MAE=SGD     36,781  (n=376)
+    Multi-Generation      MAE=SGD     48,803  (n=1)
+  TEST (PRE-REFIT): RMSE=42,791  MAE=28,734  R2=0.9607  MAPE=4.36%
+  TEST (PRE-REFIT) flat_type breakdown:
+    1 Room                MAE=SGD      7,249  (n=4)
+    2 Room                MAE=SGD     18,917  (n=178)
+    3 Room                MAE=SGD     23,152  (n=1,435)
+    4 Room                MAE=SGD     27,542  (n=2,582)
+    5 Room                MAE=SGD     34,746  (n=1,370)
+    Executive             MAE=SGD     42,364  (n=341)
+    Multi-Generation      MAE=SGD     64,478  (n=1)
+
+--- LGBM ---
+  VAL: RMSE=35,671  MAE=25,142  R2=0.9708  MAPE=3.80%
+  VAL flat_type breakdown:
+    1 Room                MAE=SGD     16,525  (n=2)
+    2 Room                MAE=SGD     14,301  (n=183)
+    3 Room                MAE=SGD     19,570  (n=1,428)
+    4 Room                MAE=SGD     23,780  (n=2,637)
+    5 Room                MAE=SGD     30,729  (n=1,405)
+    Executive             MAE=SGD     40,197  (n=376)
+    Multi-Generation      MAE=SGD     63,835  (n=1)
+  TEST (PRE-REFIT): RMSE=42,697  MAE=28,549  R2=0.9609  MAPE=4.28%
+  TEST (PRE-REFIT) flat_type breakdown:
+    1 Room                MAE=SGD      8,349  (n=4)
+    2 Room                MAE=SGD     15,334  (n=178)
+    3 Room                MAE=SGD     22,736  (n=1,435)
+    4 Room                MAE=SGD     27,680  (n=2,582)
+    5 Room                MAE=SGD     33,904  (n=1,370)
+    Executive             MAE=SGD     45,104  (n=341)
+    Multi-Generation      MAE=SGD     68,616  (n=1)
+
+--- CATBOOST ---
+  VAL: RMSE=33,832  MAE=23,674  R2=0.9737  MAPE=3.58%
+  VAL flat_type breakdown:
+    1 Room                MAE=SGD     17,389  (n=2)
+    2 Room                MAE=SGD     13,623  (n=183)
+    3 Room                MAE=SGD     17,770  (n=1,428)
+    4 Room                MAE=SGD     22,485  (n=2,637)
+    5 Room                MAE=SGD     29,860  (n=1,405)
+    Executive             MAE=SGD     36,166  (n=376)
+    Multi-Generation      MAE=SGD     56,838  (n=1)
+  TEST (PRE-REFIT): RMSE=40,149  MAE=26,427  R2=0.9654  MAPE=3.98%
+  TEST (PRE-REFIT) flat_type breakdown:
+    1 Room                MAE=SGD      7,266  (n=4)
+    2 Room                MAE=SGD     15,121  (n=178)
+    3 Room                MAE=SGD     20,488  (n=1,435)
+    4 Room                MAE=SGD     26,044  (n=2,582)
+    5 Room                MAE=SGD     32,040  (n=1,370)
+    Executive             MAE=SGD     37,892  (n=341)
+    Multi-Generation      MAE=SGD     30,501  (n=1)
+
+--- ENSEMBLE ---
+  VAL: RMSE=33,638  MAE=23,548  R2=0.9740  MAPE=3.56%
+  VAL flat_type breakdown:
+    1 Room                MAE=SGD     17,189  (n=2)
+    2 Room                MAE=SGD     13,321  (n=183)
+    3 Room                MAE=SGD     17,810  (n=1,428)
+    4 Room                MAE=SGD     22,289  (n=2,637)
+    5 Room                MAE=SGD     29,578  (n=1,405)
+    Executive             MAE=SGD     36,557  (n=376)
+    Multi-Generation      MAE=SGD     58,443  (n=1)
+  TEST (PRE-REFIT): RMSE=40,136  MAE=26,414  R2=0.9654  MAPE=3.97%
+  TEST (PRE-REFIT) flat_type breakdown:
+    1 Room                MAE=SGD      7,142  (n=4)
+    2 Room                MAE=SGD     14,703  (n=178)
+    3 Room                MAE=SGD     20,456  (n=1,435)
+    4 Room                MAE=SGD     25,991  (n=2,582)
+    5 Room                MAE=SGD     31,891  (n=1,370)
+    Executive             MAE=SGD     38,979  (n=341)
+    Multi-Generation      MAE=SGD     39,388  (n=1)
+
+======================================================================
+WINNER
+======================================================================
+  Selected base model: CATBOOST
+  Selection metric: validation MAPE=3.58%
+  Runner-up on validation: lgbm at 3.80% MAPE
+  Model Results above show the pre-refit candidate snapshots used for selection.
+  Pre-refit winner TEST snapshot: RMSE=40,149  R2=0.9654  MAPE=3.98%
+  Final deployed TEST after train+val refit: RMSE=38,257  R2=0.9686  MAPE=3.80%
+  Refit vs pre-refit TEST MAPE delta: -0.18pp
+  Ensemble exclusion: meta-learner leakage + Render memory constraint
