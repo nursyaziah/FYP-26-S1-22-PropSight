@@ -8,20 +8,20 @@
     "upper": 502500.0
   },
   "3 Room": {
-    "lower": 125500.0,
-    "upper": 577500.0
+    "lower": 122500.0,
+    "upper": 582500.0
   },
   "4 Room": {
-    "lower": 118220.0,
-    "upper": 869868.0
+    "lower": 121250.0,
+    "upper": 871250.0
   },
   "5 Room": {
     "lower": 137500.0,
     "upper": 1037500.0
   },
   "Executive": {
-    "lower": 243000.0,
-    "upper": 1163000.0
+    "lower": 240000.0,
+    "upper": 1168000.0
   },
   "Multi-Generation": {
     "lower": 517500.0,
