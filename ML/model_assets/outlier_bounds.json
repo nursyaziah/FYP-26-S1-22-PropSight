@@ -1,30 +1,30 @@
 {
   "1 Room": {
-    "lower": 106668.0,
-    "upper": 310220.0
+    "lower": 106667.0,
+    "upper": 311555.0
   },
   "2 Room": {
-    "lower": 82500.0,
-    "upper": 502500.0
+    "lower": 83000.0,
+    "upper": 507000.0
   },
   "3 Room": {
     "lower": 122500.0,
     "upper": 582500.0
   },
   "4 Room": {
-    "lower": 121250.0,
-    "upper": 871250.0
+    "lower": 127500.0,
+    "upper": 867500.0
   },
   "5 Room": {
-    "lower": 137500.0,
-    "upper": 1037500.0
+    "lower": 133000.0,
+    "upper": 1045000.0
   },
   "Executive": {
-    "lower": 240000.0,
-    "upper": 1168000.0
+    "lower": 245000.0,
+    "upper": 1165000.0
   },
   "Multi-Generation": {
-    "lower": 517500.0,
-    "upper": 1177500.0
+    "lower": 512500.0,
+    "upper": 1186500.0
   }
 }
